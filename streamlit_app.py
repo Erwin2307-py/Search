@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
@@ -24,6 +25,10 @@ import openpyxl
 
 # Neuer Import für die Übersetzung mit google_trans_new
 from google_trans_new import google_translator
+
+# Neue Imports für API-basierte Paper QA
+from extract_info import extract_paper_info_to_excel
+from model_runner import ask_question
 
 # ------------------------------------------------------------------
 # Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
@@ -641,10 +646,6 @@ def parse_cohort_info(summary_text: str) -> dict:
     return info
 
 # ------------------------------------------------------------------
-# (Bereits vorhanden) fetch_pubmed_doi_and_link
-# ------------------------------------------------------------------
-
-# ------------------------------------------------------------------
 # Function for ChatGPT-based scoring search
 # ------------------------------------------------------------------
 def chatgpt_online_search_with_genes(papers, codewords, genes, top_k=100):
@@ -1254,7 +1255,7 @@ Only output this JSON, no further explanation:
     class GenotypeFinder:
         def __init__(self):
             self.ensembl_server = "https://rest.ensembl.org"
-        
+
         def get_variant_info(self, rs_id):
             """Fetches detailed info about a variation from Ensembl."""
             if not rs_id.startswith("rs"):
@@ -1265,9 +1266,9 @@ Only output this JSON, no further explanation:
                 r = requests.get(url, headers={"Content-Type": "application/json"}, timeout=10)
                 r.raise_for_status()
                 return r.json()
-            except Exception:
+            except:
                 return None
-        
+
         def calculate_genotype_frequency(self, data, genotype):
             """
             Calculates genotype frequency based on allele frequencies and Hardy-Weinberg.
@@ -1911,6 +1912,42 @@ def page_genotype_finder():
         st.write(freq_text)
 
 # ------------------------------------------------------------------
+# NEUES MODULE/PAGE: Paper QA via API (Excel + Q&A)
+# ------------------------------------------------------------------
+def page_paperqa_api():
+    st.title("📄 Paper QA via API")
+
+    st.write("Lade ein wissenschaftliches PDF hoch, um automatisch Schlüsselinfos zu extrahieren und eine Excel-Datei zu generieren.")
+    uploaded_file = st.file_uploader("Wähle ein PDF-Datei aus", type=["pdf"])
+    
+    if uploaded_file:
+        # Stelle sicher, dass der Ordner 'papers' existiert
+        os.makedirs("papers", exist_ok=True)
+        paper_path = os.path.join("papers", uploaded_file.name)
+        with open(paper_path, "wb") as f:
+            f.write(uploaded_file.read())
+        st.success("📄 Paper wurde gespeichert.")
+
+        if st.button("🔍 Analysiere Paper & Fülle Excel"):
+            with st.spinner("Extrahiere Schlüsselinformationen und erstelle Excel..."):
+                extract_paper_info_to_excel(paper_path)
+            st.success("Excel wurde erstellt: result.xlsx")
+            st.download_button(
+                label="Download result.xlsx",
+                data=open("result.xlsx", "rb").read(),
+                file_name="result.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        question = st.text_input("Stelle eine Frage zum Paper")
+        if question:
+            if st.button("❓ Frage beantworten"):
+                with st.spinner("Antwort wird generiert..."):
+                    answer = ask_question(paper_path, question)
+                st.success("Antwort:")
+                st.write(answer)
+
+# ------------------------------------------------------------------
 # Sidebar Navigation & Chatbot
 # ------------------------------------------------------------------
 def sidebar_module_navigation():
@@ -1922,7 +1959,8 @@ def sidebar_module_navigation():
         "3) Codewords & PubMed": page_codewords_pubmed,
         "Analyze Paper": page_analyze_paper,
         "Genotype Frequency Finder": page_genotype_finder,
-        "AI-Content Detection": page_ai_content_detection  # <-- NEU HINZUGEFÜGT
+        "AI-Content Detection": page_ai_content_detection,
+        "Paper QA API": page_paperqa_api  # Neuer Button in der Sidebar
     }
 
     for label, page in pages.items():
