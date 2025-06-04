@@ -5,7 +5,6 @@ import pandas as pd
 import re
 import datetime
 import sys
-import concurrent.futures
 import os
 import PyPDF2
 import openai
@@ -19,10 +18,7 @@ from dotenv import load_dotenv
 from PIL import Image
 from scholarly import scholarly
 
-# Neu: Excel / openpyxl-Import
 import openpyxl
-
-# Neuer Import für die Übersetzung mit google_trans_new
 from google_trans_new import google_translator
 
 # ------------------------------------------------------------------
@@ -104,7 +100,6 @@ def translate_text_openai(text, source_language, target_language, api_key):
             temperature=0
         )
         translation = response.choices[0].message.content.strip()
-        # Removes leading/trailing quotes
         if translation and translation[0] in ["'", '"', "‘", "„"]:
             translation = translation[1:]
             if translation and translation[-1] in ["'", '"']:
@@ -248,10 +243,8 @@ def fetch_pubmed_doi_and_link(pmid: str) -> (str, str):
     if not pmid or pmid == "n/a":
         return ("n/a", "")
     
-    # PubMed link
     link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
     
-    # 1) esummary
     summary_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
     params_sum = {"db": "pubmed", "id": pmid, "retmode": "json"}
     try:
@@ -267,7 +260,6 @@ def fetch_pubmed_doi_and_link(pmid: str) -> (str, str):
     except Exception:
         pass
     
-    # 2) efetch
     efetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     params_efetch = {"db": "pubmed", "id": pmid, "retmode": "xml"}
     try:
@@ -443,10 +435,10 @@ class SemanticScholarSearch:
 # ------------------------------------------------------------------
 def module_paperqa2():
     st.subheader("PaperQA2 Module")
-    st.write("This is the PaperQA2 module. You can add more settings and functions here.")
+    st.write("This is the PaperQA2 module.")
     question = st.text_input("Please enter your question:")
     if st.button("Submit question"):
-        st.write("Answer: This is a dummy answer to the question:", question)
+        st.write("Answer:", question)
 
 def page_home():
     st.title("Welcome to the Main Menu")
@@ -455,26 +447,25 @@ def page_home():
 
 def page_codewords_pubmed():
     st.title("Codewords & PubMed Settings")
-    from modules.codewords_pubmed import module_codewords_pubmed
-    module_codewords_pubmed()
+    st.write("Codewords & PubMed module placeholder.")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
 def page_paper_selection():
     st.title("Paper Selection Settings")
-    st.write("Define how you want to pick or exclude certain papers. (Dummy placeholder...)")
+    st.write("Paper Selection module placeholder.")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
 def page_analysis():
     st.title("Analysis & Evaluation Settings")
-    st.write("Set up your analysis parameters, thresholds, etc. (Dummy placeholder...)")
+    st.write("Analysis & Evaluation module placeholder.")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
 def page_extended_topics():
     st.title("Extended Topics")
-    st.write("Access advanced or extended topics for further research. (Dummy placeholder...)")
+    st.write("Extended Topics module placeholder.")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
@@ -486,13 +477,11 @@ def page_paperqa2():
 
 def page_excel_online_search():
     st.title("Excel Online Search")
-    # Placeholder, or import existing code if needed
+    st.write("Excel Online Search module placeholder.")
 
 def page_online_api_filter():
     st.title("Online-API_Filter (Combined)")
-    st.write("Here, you can combine API selection and filtering in one step.")
-    from modules.online_api_filter import module_online_api_filter
-    module_online_api_filter()
+    st.write("Online-API Filter module placeholder.")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
@@ -716,7 +705,6 @@ def analyze_papers_for_commonalities_and_contradictions(pdf_texts: Dict[str, str
     import openai as _openai_mod
     _openai_mod.api_key = api_key
 
-    # 1) Extract claims per paper
     all_claims = {}
     for fname, txt in pdf_texts.items():
         prompt_claims = f"""
@@ -758,7 +746,6 @@ Text: {txt[:6000]}
             })
     big_input_str = json.dumps(merged_claims, ensure_ascii=False, indent=2)
 
-    # 2) Identify commonalities + contradictions
     if method_choice == "ContraCrow":
         final_prompt = f"""
 Nutze die ContraCrow-Methodik, um die folgenden Claims (Aussagen) aus mehreren wissenschaftlichen PDF-Papers zu analysieren. 
@@ -1145,7 +1132,6 @@ Only output this JSON, no further explanation:
                                                             st.write(f"Image {img_index} could not be extracted.")
                                             else:
                                                 st.write("No images here.")
-                                    # Simple fulltext search for "Table"
                                     st.markdown(f"### Fulltext-Search 'Table' in {fpdf.name}")
                                     try:
                                         text_all_pages = ""
@@ -1277,7 +1263,7 @@ Only output this JSON, no further explanation:
                 r = requests.get(url, headers={"Content-Type": "application/json"}, timeout=10)
                 r.raise_for_status()
                 return r.json()
-            except Exception:
+            except:
                 return None
         
         def calculate_genotype_frequency(self, data, genotype):
@@ -1295,13 +1281,11 @@ Only output this JSON, no further explanation:
             allele1, allele2 = genotype[0], genotype[1]
             results = {}
             
-            # We'll only look at 1000GENOMES populations to keep it consistent
             for population in data['populations']:
                 pop_name = population.get('population', 'Unknown')
                 if '1000GENOMES' not in pop_name:
                     continue
                 
-                # Gather allele frequencies
                 allele_freqs = {}
                 for pop2 in data['populations']:
                     if pop2.get('population') == pop_name:
@@ -1312,7 +1296,6 @@ Only output this JSON, no further explanation:
                 if allele1 not in allele_freqs or allele2 not in allele_freqs:
                     continue
                 
-                # HW assumption
                 if allele1 == allele2:
                     genotype_freq = allele_freqs[allele1] ** 2
                 else:
@@ -1388,7 +1371,6 @@ Only output this JSON, no further explanation:
                     
                     methods_result = analyzer.identify_methods(text, api_key)
                     
-                    # Attempt to find a gene or variant in the text (very basic example)
                     pattern_obvious = re.compile(r"in the\s+([A-Za-z0-9_-]+)\s+gene", re.IGNORECASE)
                     match_text = re.search(pattern_obvious, text)
                     gene_via_text = match_text.group(1) if match_text else None
@@ -1440,7 +1422,6 @@ Only output this JSON, no further explanation:
                     if pmid_found != "n/a":
                         doi_final, link_pubmed = fetch_pubmed_doi_and_link(pmid_found)
 
-                    # Translate to English for Excel
                     ergebnisse_en = translate_text_openai(ergebnisse, "German", "English", api_key) if ergebnisse else ""
                     schlussfolgerungen_en = translate_text_openai(schlussfolgerungen, "German", "English", api_key) if schlussfolgerungen else ""
                     cohort_info_en = translate_text_openai(cohort_info, "German", "English", api_key) if cohort_info else ""
@@ -1453,15 +1434,12 @@ Only output this JSON, no further explanation:
                         return
                     ws = wb.active
 
-                    # Fill the main theme & date
                     ws["D2"].value = main_theme_for_excel
                     ws["J2"].value = datetime.datetime.now().strftime("%Y-%m-%d")
 
-                    # Fill gene / rsNumber
                     ws["D5"].value = gene_via_text if gene_via_text else ""
                     ws["D6"].value = rs_num if rs_num else ""
                     
-                    # Up to 3 genotype hits
                     for i in range(3):
                         row_i = 10 + i
                         if i < len(unique_geno_pairs):
@@ -1478,16 +1456,13 @@ Only output this JSON, no further explanation:
                             ws[f"D{row_i}"] = ""
                             ws[f"E{row_i}"] = ""
 
-                    # Publication year, cohort, key findings
                     ws["C20"].value = year_for_excel
                     ws["D20"].value = cohort_info_en
                     ws["E20"].value = key_findings_result_en
 
-                    # Fill separated summary results (English)
                     ws["G21"].value = ergebnisse_en
                     ws["G22"].value = schlussfolgerungen_en
 
-                    # Fill PMID, link, and DOI
                     ws["J21"].value = pmid_found if pmid_found != "n/a" else ""
                     ws["J22"].value = link_pubmed if link_pubmed else ""
                     ws["I22"].value = doi_final if doi_final != "n/a" else ""
@@ -1516,7 +1491,6 @@ Only output this JSON, no further explanation:
     st.write("---")
     st.write("## Single Analysis of Papers Selected After ChatGPT Scoring")
     
-    # Button for scoring
     if st.button("Perform Scoring now"):
         if "search_results" in st.session_state and st.session_state["search_results"]:
             codewords_str = st.session_state.get("codewords", "")
