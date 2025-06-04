@@ -42,6 +42,22 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 st.set_page_config(page_title="Streamlit Multi-Modul Demo", layout="wide")
 
 # ------------------------------------------------------------------
+# Basis-URL der externen API
+# ------------------------------------------------------------------
+API_BASE_URL = "http://localhost:8000"
+
+def is_api_available() -> bool:
+    """
+    Prüft, ob die externe API erreichbar ist, indem ein GET-Request an /docs gesendet wird.
+    Gibt True zurück, wenn Status 200 OK, sonst False.
+    """
+    try:
+        resp = requests.get(f"{API_BASE_URL}/docs", timeout=2)
+        return resp.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+# ------------------------------------------------------------------
 # Login-Funktionalität
 # ------------------------------------------------------------------
 def login():
@@ -486,7 +502,7 @@ def page_online_api_filter():
         st.session_state["current_page"] = "Home"
 
 # ------------------------------------------------------------------
-# Important Classes for Analysis
+# Wichtige Klassen für Analyse
 # ------------------------------------------------------------------
 class PaperAnalyzer:
     def __init__(self, model="gpt-3.5-turbo"):
@@ -609,7 +625,7 @@ class AlleleFrequencyFinder:
         return " | ".join(out)
 
 def split_summary(summary_text):
-    """Attempts to split 'Ergebnisse' and 'Schlussfolgerungen' from a German summary."""
+    """Attempts to split 'Ergebnisse' und 'Schlussfolgerungen' from a German summary."""
     pattern = re.compile(
         r'(Ergebnisse(?:\:|\s*\n)|Resultate(?:\:|\s*\n))(?P<results>.*?)(Schlussfolgerungen(?:\:|\s*\n)|Fazit(?:\:|\s*\n))(?P<conclusion>.*)',
         re.IGNORECASE | re.DOTALL
@@ -806,7 +822,7 @@ Hier die Claims:
         return f"Fehler bei Gemeinsamkeiten/Widersprüche: {e}"
 
 # ------------------------------------------------------------------
-# Page: Analyze Paper (inkl. PaperQA Multi-Paper Analyzer)
+# Seite: Analyze Paper (inkl. PaperQA Multi-Paper Analyzer)
 # ------------------------------------------------------------------
 def page_analyze_paper():
     st.title("Analyze Paper - Integrated")
@@ -1234,7 +1250,7 @@ Only output this JSON, no further explanation:
                             else:
                                 st.info("No contradictions detected.")
                         except Exception as e:
-                            st.warning(f"GPT output could not be parsed as valid JSON.\nError: {e}")
+                            st.warning(f"GPT output could not be parsed als valid JSON.\nError: {e}")
     
     else:
         if not api_key:
@@ -1278,39 +1294,28 @@ Only output this JSON, no further explanation:
             """
             if not data or 'populations' not in data:
                 return {}
-            if len(genotype) != 2:
+            if len(genotype) < 2:
                 return {}
-            
             allele1, allele2 = genotype[0], genotype[1]
             results = {}
-            
-            # We'll only look at 1000GENOMES populations to keep it consistent
-            for population in data['populations']:
-                pop_name = population.get('population', 'Unknown')
+            for pop in data['populations']:
+                pop_name = pop.get('population', '')
                 if '1000GENOMES' not in pop_name:
                     continue
-                
-                # Gather allele frequencies
-                allele_freqs = {}
+                allele_freq_map = {}
                 for pop2 in data['populations']:
                     if pop2.get('population') == pop_name:
-                        a = pop2.get('allele', '')
-                        f = pop2.get('frequency', 0)
-                        allele_freqs[a] = f
-                
-                if allele1 not in allele_freqs or allele2 not in allele_freqs:
-                    continue
-                
-                # HW assumption
-                if allele1 == allele2:
-                    genotype_freq = allele_freqs[allele1] ** 2
-                else:
-                    genotype_freq = 2 * allele_freqs[allele1] * allele_freqs[allele2]
-                
-                results[pop_name] = genotype_freq
-            
+                        a_ = pop2.get('allele')
+                        f_ = pop2.get('frequency')
+                        allele_freq_map[a_] = f_
+                if allele1 in allele_freq_map and allele2 in allele_freq_map:
+                    if allele1 == allele2:
+                        freq_g = allele_freq_map[allele1] ** 2
+                    else:
+                        freq_g = 2 * allele_freq_map[allele1] * allele_freq_map[allele2]
+                    results[pop_name] = freq_g
             return results
-    
+
     def build_genotype_freq_text(freq_dict: Dict[str, float]) -> str:
         """Convert genotype frequency dict into an English multiline text."""
         if not freq_dict:
@@ -1505,7 +1510,7 @@ Only output this JSON, no further explanation:
     st.write("---")
     st.write("## Single Analysis of Papers Selected After ChatGPT Scoring")
     
-    # Button for scoring
+    # Button für Scoring
     if st.button("Perform Scoring now"):
         if "search_results" in st.session_state and st.session_state["search_results"]:
             codewords_str = st.session_state.get("codewords", "")
@@ -1948,6 +1953,49 @@ def page_paperqa_api():
                 st.write(answer)
 
 # ------------------------------------------------------------------
+# NEUE SEITE: API Status & Excel-Erzeugung
+# ------------------------------------------------------------------
+def page_api_status():
+    st.title("🔗 API Status & Excel-Erstellung")
+
+    available = is_api_available()
+    if available:
+        st.success("✅ Externe API ist erreichbar.")
+    else:
+        st.error("❌ Externe API ist nicht erreichbar.")
+
+    st.write("Sollte die API erreichbar sein, kannst du hier ein PDF hochladen, um automatisch eine Excel-Datei zu erstellen und herunterzuladen.")
+    uploaded_file = st.file_uploader("Wähle ein PDF-Datei aus", type=["pdf"], key="api_status_uploader")
+
+    if uploaded_file:
+        if not available:
+            st.warning("Die API ist aktuell nicht erreichbar. Excel-Erstellung deaktiviert.")
+            return
+
+        os.makedirs("papers", exist_ok=True)
+        paper_path = os.path.join("papers", uploaded_file.name)
+        with open(paper_path, "wb") as f:
+            f.write(uploaded_file.read())
+        st.success("📄 Paper wurde gespeichert.")
+
+        if st.button("📥 Erstelle Excel über API"):
+            with st.spinner("Sende PDF an API und erzeuge Excel..."):
+                try:
+                    files = {"file": open(paper_path, "rb")}
+                    resp = requests.post(f"{API_BASE_URL}/extract_to_excel", files=files, timeout=20)
+                    resp.raise_for_status()
+                    excel_bytes = resp.content
+                    st.success("Excel wurde generiert: result_api.xlsx")
+                    st.download_button(
+                        label="Download result_api.xlsx",
+                        data=excel_bytes,
+                        file_name="result_api.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                except Exception as e:
+                    st.error(f"Fehler beim Erzeugen der Excel-Datei über API:\n{e}")
+
+# ------------------------------------------------------------------
 # Sidebar Navigation & Chatbot
 # ------------------------------------------------------------------
 def sidebar_module_navigation():
@@ -1960,7 +2008,8 @@ def sidebar_module_navigation():
         "Analyze Paper": page_analyze_paper,
         "Genotype Frequency Finder": page_genotype_finder,
         "AI-Content Detection": page_ai_content_detection,
-        "Paper QA API": page_paperqa_api  # Neuer Button in der Sidebar
+        "Paper QA API": page_paperqa_api,       # Bestehende Seite
+        "API Status & Excel": page_api_status   # Neuer Button in der Sidebar
     }
 
     for label, page in pages.items():
