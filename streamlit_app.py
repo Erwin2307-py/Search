@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
@@ -6,6 +5,7 @@ import pandas as pd
 import re
 import datetime
 import sys
+import concurrent.futures
 import os
 import PyPDF2
 import openai
@@ -24,16 +24,6 @@ import openpyxl
 
 # Neuer Import für die Übersetzung mit google_trans_new
 from google_trans_new import google_translator
-
-# ------------------------------------------------------------------
-# Versuche, extract_info und model_runner zu importieren; falls nicht vorhanden, deaktiviere API-Features
-# ------------------------------------------------------------------
-try:
-    from extract_info import extract_paper_info_to_excel
-    from model_runner import ask_question
-    _HAS_PAPERQA_API = True
-except ImportError:
-    _HAS_PAPERQA_API = False
 
 # ------------------------------------------------------------------
 # Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
@@ -89,7 +79,7 @@ if not st.session_state["logged_in"]:
 # 1) Gemeinsame Funktionen & Klassen
 # ------------------------------------------------------------------
 def clean_html_except_br(text):
-    """Entfernt alle HTML-Tags außer <br>."""
+    """Removes all HTML tags except <br>."""
     cleaned_text = re.sub(r'</?(?!br\b)[^>]*>', '', text)
     return cleaned_text
 
@@ -114,7 +104,7 @@ def translate_text_openai(text, source_language, target_language, api_key):
             temperature=0
         )
         translation = response.choices[0].message.content.strip()
-        # Entferne führende/trailende Anführungszeichen
+        # Removes leading/trailing quotes
         if translation and translation[0] in ["'", '"', "‘", "„"]:
             translation = translation[1:]
             if translation and translation[-1] in ["'", '"']:
@@ -507,7 +497,7 @@ def page_online_api_filter():
         st.session_state["current_page"] = "Home"
 
 # ------------------------------------------------------------------
-# Wichtige Klassen für Analyse
+# Important Classes for Analysis
 # ------------------------------------------------------------------
 class PaperAnalyzer:
     def __init__(self, model="gpt-3.5-turbo"):
@@ -630,7 +620,7 @@ class AlleleFrequencyFinder:
         return " | ".join(out)
 
 def split_summary(summary_text):
-    """Attempts to split 'Ergebnisse' und 'Schlussfolgerungen' from a German summary."""
+    """Attempts to split 'Ergebnisse' and 'Schlussfolgerungen' from a German summary."""
     pattern = re.compile(
         r'(Ergebnisse(?:\:|\s*\n)|Resultate(?:\:|\s*\n))(?P<results>.*?)(Schlussfolgerungen(?:\:|\s*\n)|Fazit(?:\:|\s*\n))(?P<conclusion>.*)',
         re.IGNORECASE | re.DOTALL
@@ -827,7 +817,7 @@ Hier die Claims:
         return f"Fehler bei Gemeinsamkeiten/Widersprüche: {e}"
 
 # ------------------------------------------------------------------
-# Seite: Analyze Paper (inkl. PaperQA Multi-Paper Analyzer)
+# Page: Analyze Paper (inkl. PaperQA Multi-Paper Analyzer)
 # ------------------------------------------------------------------
 def page_analyze_paper():
     st.title("Analyze Paper - Integrated")
@@ -877,7 +867,7 @@ def page_analyze_paper():
         st.session_state["theme_compare"] = ""
     
     def do_outlier_logic(paper_map: dict) -> (list, str):
-        """Determines which papers are thematically relevant und possibly a shared main theme."""
+        """Determines which papers are thematically relevant and possibly a shared main theme."""
         if theme_mode == "Manually":
             main_theme = user_defined_theme.strip()
             if not main_theme:
@@ -1255,7 +1245,7 @@ Only output this JSON, no further explanation:
                             else:
                                 st.info("No contradictions detected.")
                         except Exception as e:
-                            st.warning(f"GPT output could not be parsed als valid JSON.\nError: {e}")
+                            st.warning(f"GPT output could not be parsed as valid JSON.\nError: {e}")
     
     else:
         if not api_key:
@@ -1276,7 +1266,7 @@ Only output this JSON, no further explanation:
     class GenotypeFinder:
         def __init__(self):
             self.ensembl_server = "https://rest.ensembl.org"
-
+        
         def get_variant_info(self, rs_id):
             """Fetches detailed info about a variation from Ensembl."""
             if not rs_id.startswith("rs"):
@@ -1287,9 +1277,9 @@ Only output this JSON, no further explanation:
                 r = requests.get(url, headers={"Content-Type": "application/json"}, timeout=10)
                 r.raise_for_status()
                 return r.json()
-            except:
+            except Exception:
                 return None
-
+        
         def calculate_genotype_frequency(self, data, genotype):
             """
             Calculates genotype frequency based on allele frequencies and Hardy-Weinberg.
@@ -1299,28 +1289,39 @@ Only output this JSON, no further explanation:
             """
             if not data or 'populations' not in data:
                 return {}
-            if len(genotype) < 2:
+            if len(genotype) != 2:
                 return {}
+            
             allele1, allele2 = genotype[0], genotype[1]
             results = {}
-            for pop in data['populations']:
-                pop_name = pop.get('population', '')
+            
+            # We'll only look at 1000GENOMES populations to keep it consistent
+            for population in data['populations']:
+                pop_name = population.get('population', 'Unknown')
                 if '1000GENOMES' not in pop_name:
                     continue
-                allele_freq_map = {}
+                
+                # Gather allele frequencies
+                allele_freqs = {}
                 for pop2 in data['populations']:
                     if pop2.get('population') == pop_name:
-                        a_ = pop2.get('allele')
-                        f_ = pop2.get('frequency')
-                        allele_freq_map[a_] = f_
-                if allele1 in allele_freq_map and allele2 in allele_freq_map:
-                    if allele1 == allele2:
-                        freq_g = allele_freq_map[allele1] ** 2
-                    else:
-                        freq_g = 2 * allele_freq_map[allele1] * allele_freq_map[allele2]
-                    results[pop_name] = freq_g
+                        a = pop2.get('allele', '')
+                        f = pop2.get('frequency', 0)
+                        allele_freqs[a] = f
+                
+                if allele1 not in allele_freqs or allele2 not in allele_freqs:
+                    continue
+                
+                # HW assumption
+                if allele1 == allele2:
+                    genotype_freq = allele_freqs[allele1] ** 2
+                else:
+                    genotype_freq = 2 * allele_freqs[allele1] * allele_freqs[allele2]
+                
+                results[pop_name] = genotype_freq
+            
             return results
-
+    
     def build_genotype_freq_text(freq_dict: Dict[str, float]) -> str:
         """Convert genotype frequency dict into an English multiline text."""
         if not freq_dict:
@@ -1515,7 +1516,7 @@ Only output this JSON, no further explanation:
     st.write("---")
     st.write("## Single Analysis of Papers Selected After ChatGPT Scoring")
     
-    # Button für Scoring
+    # Button for scoring
     if st.button("Perform Scoring now"):
         if "search_results" in st.session_state and st.session_state["search_results"]:
             codewords_str = st.session_state.get("codewords", "")
@@ -1639,7 +1640,7 @@ Only output this JSON, no further explanation:
                         else:
                             st.info("No contradictions found.")
                     except Exception as e:
-                        st.warning("GPT output could not be parsed als valid JSON.")
+                        st.warning("GPT output could not be parsed as valid JSON.")
 
 # ------------------------------------------------------------------
 # NEUE KLASSE & FUNKTION FÜR KI-INHALTSERKENNUNG (AIContentDetector)
@@ -1657,19 +1658,16 @@ class AIContentDetector:
     
     def analyze_patterns(self, text):
         """Untersucht typische KI-Schreibmuster"""
-        # Einige einfache Heuristiken/Regex
         patterns = {
-            "wiederholende_phrasen": r'(\b\w+\s+\w+\b)(?=.*\1)',  # Beispiel: wiederholte Wortgruppen
-            "gleichmäßiger_ton": r'(jedoch|allerdings|dennoch|daher|folglich|somit)',  # Signalwörter
+            "wiederholende_phrasen": r'(\b\w+\s+\w+\b)(?=.*\1)',
+            "gleichmäßiger_ton": r'(jedoch|allerdings|dennoch|daher|folglich|somit)',
             "generische_übergänge": r'\b(zunächst|anschließend|abschließend|zusammenfassend)\b'
         }
         
         scores = {}
         for name, pattern in patterns.items():
             matches = re.findall(pattern, text, re.IGNORECASE)
-            # Frequenz pro 100 Wörter
             density = len(matches) / (len(text.split()) / 100 + 1e-8)
-            # Eine einfache Skalierung  (kein echter wissenschaftl. Ansatz)
             scores[name] = min(100, density * 5)
         
         return sum(scores.values()) / len(scores) if scores else 0
@@ -1678,9 +1676,8 @@ class AIContentDetector:
         """Prüft auf konsistente Schreibweise und Ton"""
         paragraphs = text.split('\n\n')
         if len(paragraphs) < 3:
-            return 50  # Zu wenig Text für eine sinnvolle Analyse
+            return 50
         
-        # Satzlängenvariation
         sentences = re.split(r'[.!?]+', text)
         lengths = [len(s.split()) for s in sentences if s.strip()]
         if not lengths:
@@ -1689,7 +1686,6 @@ class AIContentDetector:
         avg_length = sum(lengths) / len(lengths)
         variation = sum(abs(l - avg_length) for l in lengths) / len(lengths)
         
-        # Niedrige Variation => KI-typisch (Heuristik)
         consistency_score = 100 - min(100, variation * 10)
         return consistency_score
     
@@ -1699,9 +1695,8 @@ class AIContentDetector:
         citations = re.findall(citation_pattern, text)
         
         if not citations:
-            return 60  # Keine Zitate gefunden => neutraler Wert
+            return 60
         
-        # Einfache Heuristik: sind viele Zitate im gleichen Format?
         formats = {}
         for citation in citations:
             format_key = re.sub(r'[A-Za-z\s]', 'X', citation)
@@ -1714,9 +1709,8 @@ class AIContentDetector:
     def detect_with_api(self, text):
         """Verwendet externe APIs (Originality.ai oder Scribbr)"""
         if not self.api_key:
-            return 50  # Keine API => Mittelwert
+            return 50
         
-        # Originality.ai
         if self.api_provider == "originality":
             try:
                 response = requests.post(
@@ -1726,27 +1720,22 @@ class AIContentDetector:
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    # 'score.ai' => 0-1
                     return result.get("score", {}).get("ai", 0.5) * 100
-            except Exception as e:
-                print(f"Originality.ai API-Fehler: {e}")
-        
-        # Scribbr (Beispiel, es gibt keine offizielle Public-API-Doku)
+            except Exception:
+                return 50
         elif self.api_provider == "scribbr":
             try:
                 response = requests.post(
-                    "https://api.scribbr.com/v1/ai-detection",  # fiktiver Endpunkt
+                    "https://api.scribbr.com/v1/ai-detection",
                     headers={"Authorization": f"Bearer {self.api_key}"},
                     json={"text": text}
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    # Annahme: "ai_probability" => 0-100
                     return result.get("ai_probability", 50)
-            except Exception as e:
-                print(f"Scribbr API-Fehler: {e}")
+            except Exception:
+                return 50
         
-        # Fallback
         return 50
     
     def analyze_text(self, text):
@@ -1755,7 +1744,6 @@ class AIContentDetector:
         for method_name, method_func in self.detection_methods.items():
             scores[method_name] = method_func(text)
         
-        # Gewichtung
         weights = {
             "pattern_analysis": 0.20,
             "consistency_check": 0.20,
@@ -1790,11 +1778,9 @@ def page_ai_content_detection():
     
     st.info("Hier kannst du Text eingeben oder eine Datei hochladen, um eine KI-Analyse durchzuführen.")
     
-    # API-Infos für Originality oder Scribbr
     api_key_input = st.text_input("API Key (optional)", value="", type="password")
     provider_option = st.selectbox("API-Anbieter", ["Kein API-Einsatz", "originality", "scribbr"], index=0)
     
-    # Eingabemethode
     input_mode = st.radio("Eingabemethode für den Text:", ["Direkte Eingabe", "Textdatei hochladen"])
     
     text_data = ""
@@ -1814,7 +1800,6 @@ def page_ai_content_detection():
             st.warning("Bitte Text eingeben oder Datei hochladen.")
             return
         
-        # Detector instanziieren
         if provider_option == "Kein API-Einsatz":
             detector = AIContentDetector(api_key=None, api_provider=None)
         else:
@@ -1922,72 +1907,27 @@ def page_genotype_finder():
         st.write(freq_text)
 
 # ------------------------------------------------------------------
-# NEUES MODULE/PAGE: Paper QA via API (Excel + Q&A)
-# ------------------------------------------------------------------
-def page_paperqa_api():
-    if not _HAS_PAPERQA_API:
-        st.error("Die Module 'extract_info' und/oder 'model_runner' konnten nicht gefunden werden. Die Paper QA API-Funktion ist deaktiviert.")
-        return
-
-    st.title("📄 Paper QA via API")
-
-    st.write("Lade ein wissenschaftliches PDF hoch, um automatisch Schlüsselinfos zu extrahieren und eine Excel-Datei zu generieren.")
-    uploaded_file = st.file_uploader("Wähle ein PDF-Datei aus", type=["pdf"], key="paperqa_api_uploader")
-    
-    if uploaded_file:
-        # Stelle sicher, dass der Ordner 'papers' existiert
-        os.makedirs("papers", exist_ok=True)
-        paper_path = os.path.join("papers", uploaded_file.name)
-        with open(paper_path, "wb") as f:
-            f.write(uploaded_file.read())
-        st.success("📄 Paper wurde gespeichert.")
-
-        if st.button("🔍 Analysiere Paper & Fülle Excel"):
-            with st.spinner("Extrahiere Schlüsselinformationen und erstelle Excel..."):
-                extract_paper_info_to_excel(paper_path)
-            st.success("Excel wurde erstellt: result.xlsx")
-            st.download_button(
-                label="Download result.xlsx",
-                data=open("result.xlsx", "rb").read(),
-                file_name="result.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-        question = st.text_input("Stelle eine Frage zum Paper", key="paperqa_api_question")
-        if question:
-            if st.button("❓ Frage beantworten"):
-                with st.spinner("Antwort wird generiert..."):
-                    answer = ask_question(paper_path, question)
-                st.success("Antwort:")
-                st.write(answer)
-
-# ------------------------------------------------------------------
-# NEUE SEITE: API Status & Excel-Erzeugung
+# NEUES MODULE/PAGE: API Status & Excel-Erstellung
 # ------------------------------------------------------------------
 def page_api_status():
     st.title("🔗 API Status & Excel-Erstellung")
 
-    available = is_api_available()
-    if available:
-        st.success("✅ Externe API ist erreichbar.")
-    else:
-        st.error("❌ Externe API ist nicht erreichbar.")
-
-    st.write("Sollte die API erreichbar sein, kannst du hier ein PDF hochladen, um automatisch eine Excel-Datei zu erstellen und herunterzuladen.")
+    st.write("Lade ein PDF hoch, um bei Klick zu prüfen, ob die lokale API erreichbar ist und gegebenenfalls eine Excel-Datei zu erstellen.")
     uploaded_file = st.file_uploader("Wähle ein PDF-Datei aus", type=["pdf"], key="api_status_uploader")
 
     if uploaded_file:
-        if not available:
-            st.warning("Die API ist aktuell nicht erreichbar. Excel-Erstellung deaktiviert.")
-            return
+        if st.button("📥 Check API & Erstelle Excel"):
+            available = is_api_available()
+            if not available:
+                st.error("❌ Externe API ist nicht erreichbar.")
+                return
 
-        os.makedirs("papers", exist_ok=True)
-        paper_path = os.path.join("papers", uploaded_file.name)
-        with open(paper_path, "wb") as f:
-            f.write(uploaded_file.read())
-        st.success("📄 Paper wurde gespeichert.")
+            os.makedirs("papers", exist_ok=True)
+            paper_path = os.path.join("papers", uploaded_file.name)
+            with open(paper_path, "wb") as f:
+                f.write(uploaded_file.read())
+            st.success("📄 Paper wurde gespeichert.")
 
-        if st.button("📥 Erstelle Excel über API"):
             with st.spinner("Sende PDF an API und erzeuge Excel..."):
                 try:
                     files = {"file": open(paper_path, "rb")}
@@ -2017,8 +1957,7 @@ def sidebar_module_navigation():
         "Analyze Paper": page_analyze_paper,
         "Genotype Frequency Finder": page_genotype_finder,
         "AI-Content Detection": page_ai_content_detection,
-        "Paper QA API": page_paperqa_api,       # Bestehende Seite (deaktiviert, falls Module fehlen)
-        "API Status & Excel": page_api_status   # Neuer Button in der Sidebar
+        "API Status & Excel": page_api_status
     }
 
     for label, page in pages.items():
@@ -2063,7 +2002,6 @@ def main():
     col_left, col_right = st.columns([4, 1])
     
     with col_left:
-        # Navigation
         page_fn = sidebar_module_navigation()
         if page_fn is not None:
             page_fn()
@@ -2126,7 +2064,6 @@ def main():
                 )
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Auto-scroll JS
         st.markdown(
             """
             <script>
@@ -2154,8 +2091,5 @@ def main():
             unsafe_allow_html=True
         )
 
-# ------------------------------------------------------------------
-# Actually run the Streamlit app
-# ------------------------------------------------------------------
 if __name__ == '__main__':
     main()
