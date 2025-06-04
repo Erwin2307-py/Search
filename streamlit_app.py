@@ -6,7 +6,6 @@ import pandas as pd
 import re
 import datetime
 import sys
-import concurrent.futures
 import os
 import PyPDF2
 import openai
@@ -26,9 +25,15 @@ import openpyxl
 # Neuer Import für die Übersetzung mit google_trans_new
 from google_trans_new import google_translator
 
-# Neue Imports für API-basierte Paper QA
-from extract_info import extract_paper_info_to_excel
-from model_runner import ask_question
+# ------------------------------------------------------------------
+# Versuche, extract_info und model_runner zu importieren; falls nicht vorhanden, deaktiviere API-Features
+# ------------------------------------------------------------------
+try:
+    from extract_info import extract_paper_info_to_excel
+    from model_runner import ask_question
+    _HAS_PAPERQA_API = True
+except ImportError:
+    _HAS_PAPERQA_API = False
 
 # ------------------------------------------------------------------
 # Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
@@ -84,14 +89,14 @@ if not st.session_state["logged_in"]:
 # 1) Gemeinsame Funktionen & Klassen
 # ------------------------------------------------------------------
 def clean_html_except_br(text):
-    """Removes all HTML tags except <br>."""
+    """Entfernt alle HTML-Tags außer <br>."""
     cleaned_text = re.sub(r'</?(?!br\b)[^>]*>', '', text)
     return cleaned_text
 
 def translate_text_openai(text, source_language, target_language, api_key):
     """Übersetzt Text über OpenAI-ChatCompletion."""
-    import openai
-    openai.api_key = api_key
+    import openai as _openai_mod
+    _openai_mod.api_key = api_key
     prompt_system = (
         f"You are a translation engine from {source_language} to {target_language} for a biotech company called Novogenia "
         f"that focuses on lifestyle and health genetics and health analyses. The outputs you provide will be used directly as "
@@ -100,7 +105,7 @@ def translate_text_openai(text, source_language, target_language, api_key):
     )
     prompt_user = f"Translate the following text from {source_language} to {target_language}:\n'{text}'"
     try:
-        response = openai.ChatCompletion.create(
+        response = _openai_mod.ChatCompletion.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": prompt_system},
@@ -109,7 +114,7 @@ def translate_text_openai(text, source_language, target_language, api_key):
             temperature=0
         )
         translation = response.choices[0].message.content.strip()
-        # Removes leading/trailing quotes
+        # Entferne führende/trailende Anführungszeichen
         if translation and translation[0] in ["'", '"', "‘", "„"]:
             translation = translation[1:]
             if translation and translation[-1] in ["'", '"']:
@@ -520,12 +525,12 @@ class PaperAnalyzer:
     
     def analyze_with_openai(self, text, prompt_template, api_key):
         """Helper function to call OpenAI via ChatCompletion."""
-        import openai
-        openai.api_key = api_key
+        import openai as _openai_mod
+        _openai_mod.api_key = api_key
         if len(text) > 15000:
             text = text[:15000] + "..."
         prompt = prompt_template.format(text=text)
-        response = openai.ChatCompletion.create(
+        response = _openai_mod.ChatCompletion.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": "You are an expert in scientific paper analysis."},
@@ -718,8 +723,8 @@ Give me a number from 0 to 100 (relevance), taking both codewords and genes into
 # Function for analyzing commonalities & contradictions
 # ------------------------------------------------------------------
 def analyze_papers_for_commonalities_and_contradictions(pdf_texts: Dict[str, str], api_key: str, model: str, method_choice: str = "Standard"):
-    import openai
-    openai.api_key = api_key
+    import openai as _openai_mod
+    _openai_mod.api_key = api_key
 
     # 1) Extract claims per paper
     all_claims = {}
@@ -735,7 +740,7 @@ Nutze als Ausgabe ein kompaktes JSON-Format, z.B:
 Text: {txt[:6000]}
 """
         try:
-            resp_claims = openai.ChatCompletion.create(
+            resp_claims = _openai_mod.ChatCompletion.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt_claims}],
                 temperature=0.3,
@@ -810,7 +815,7 @@ Hier die Claims:
 """
 
     try:
-        resp_final = openai.ChatCompletion.create(
+        resp_final = _openai_mod.ChatCompletion.create(
             model=model,
             messages=[{"role": "user", "content": final_prompt}],
             temperature=0.0,
@@ -872,7 +877,7 @@ def page_analyze_paper():
         st.session_state["theme_compare"] = ""
     
     def do_outlier_logic(paper_map: dict) -> (list, str):
-        """Determines which papers are thematically relevant and possibly a shared main theme."""
+        """Determines which papers are thematically relevant und possibly a shared main theme."""
         if theme_mode == "Manually":
             main_theme = user_defined_theme.strip()
             if not main_theme:
@@ -1634,7 +1639,7 @@ Only output this JSON, no further explanation:
                         else:
                             st.info("No contradictions found.")
                     except Exception as e:
-                        st.warning("GPT output could not be parsed as valid JSON.")
+                        st.warning("GPT output could not be parsed als valid JSON.")
 
 # ------------------------------------------------------------------
 # NEUE KLASSE & FUNKTION FÜR KI-INHALTSERKENNUNG (AIContentDetector)
@@ -1920,10 +1925,14 @@ def page_genotype_finder():
 # NEUES MODULE/PAGE: Paper QA via API (Excel + Q&A)
 # ------------------------------------------------------------------
 def page_paperqa_api():
+    if not _HAS_PAPERQA_API:
+        st.error("Die Module 'extract_info' und/oder 'model_runner' konnten nicht gefunden werden. Die Paper QA API-Funktion ist deaktiviert.")
+        return
+
     st.title("📄 Paper QA via API")
 
     st.write("Lade ein wissenschaftliches PDF hoch, um automatisch Schlüsselinfos zu extrahieren und eine Excel-Datei zu generieren.")
-    uploaded_file = st.file_uploader("Wähle ein PDF-Datei aus", type=["pdf"])
+    uploaded_file = st.file_uploader("Wähle ein PDF-Datei aus", type=["pdf"], key="paperqa_api_uploader")
     
     if uploaded_file:
         # Stelle sicher, dass der Ordner 'papers' existiert
@@ -1944,7 +1953,7 @@ def page_paperqa_api():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-        question = st.text_input("Stelle eine Frage zum Paper")
+        question = st.text_input("Stelle eine Frage zum Paper", key="paperqa_api_question")
         if question:
             if st.button("❓ Frage beantworten"):
                 with st.spinner("Antwort wird generiert..."):
@@ -2008,7 +2017,7 @@ def sidebar_module_navigation():
         "Analyze Paper": page_analyze_paper,
         "Genotype Frequency Finder": page_genotype_finder,
         "AI-Content Detection": page_ai_content_detection,
-        "Paper QA API": page_paperqa_api,       # Bestehende Seite
+        "Paper QA API": page_paperqa_api,       # Bestehende Seite (deaktiviert, falls Module fehlen)
         "API Status & Excel": page_api_status   # Neuer Button in der Sidebar
     }
 
