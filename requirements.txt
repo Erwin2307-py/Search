@@ -40,3 +40,5 @@ img2table
 opencv-python
 google_trans_new==1.1.9
 Pillow
+chonkie>=0.1.0
+label-studio-sdk>=1.0.0
