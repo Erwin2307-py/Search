@@ -887,19 +887,19 @@ def page_analyze_paper():
     if "theme_compare" not in st.session_state:
         st.session_state["theme_compare"] = ""
     
-    def do_outlier_logic(paper_map: dict) -> (list, str):
-        """Determines which papers are thematically relevant and possibly a shared main theme."""
-        if theme_mode == "Manually":
-            main_theme = user_defined_theme.strip()
-            if not main_theme:
-                st.error("Please provide a manual main theme!")
-                return ([], "")
-            snippet_list = []
-            for name, txt_data in paper_map.items():
-                snippet = txt_data[:700].replace("\n", " ")
-                snippet_list.append(f'{{"filename": "{name}", "snippet": "{snippet}"}}')
-            big_snippet = ",\n".join(snippet_list)
-            big_input = f"""
+def do_outlier_logic(paper_map: dict) -> (list, str):
+    """Determines which papers are thematically relevant and possibly a shared main theme."""
+    if theme_mode == "Manually":
+        main_theme = user_defined_theme.strip()
+        if not main_theme:
+            st.error("Please provide a manual main theme!")
+            return ([], "")
+        snippet_list = []
+        for name, txt_data in paper_map.items():
+            snippet = txt_data[:700].replace("\n", " ")
+            snippet_list.append(f'{{"filename": "{name}", "snippet": "{snippet}"}}')
+        big_snippet = ",\n".join(snippet_list)
+        big_input = f"""
 Der Nutzer hat folgendes Hauptthema definiert: '{main_theme}'.
 Hier sind mehrere Paper in JSON-Form. Entscheide pro Paper, ob es zu diesem Thema passt oder nicht.
 Gib mir am Ende ein JSON-Format zurück:
@@ -915,46 +915,111 @@ Only return the JSON, no extra explanation.
 
 [{big_snippet}]
 """
-            try:
-                openai.api_key = api_key
-                scope_resp = openai.ChatCompletion.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "You check paper snippets for relevance to the user theme."},
-                        {"role": "user", "content": big_input}
-                    ],
-                    temperature=0.0,
-                    max_tokens=1800
-                )
-                scope_decision = scope_resp.choices[0].message.content
-            except Exception as e1:
-                st.error(f"GPT error in Compare-Mode (Manual): {e1}")
-                return ([], "")
-            st.markdown("#### GPT-Output (Outlier-Check / Manual):")
-            st.code(scope_decision, language="json")
-            json_str = scope_decision.strip()
-            if json_str.startswith("```
-                json_str = re.sub(r"```[\w]*\n?", "", json_str)
-                json_str = re.sub(r"\n?```
-            try:
-                data_parsed = json.loads(json_str)
-                papers_info = data_parsed.get("papers", [])
-            except Exception as parse_e:
-                st.error(f"Error parsing JSON: {parse_e}")
-                return ([], "")
-            st.write(f"**Main theme (Manual)**: {main_theme}")
-            relevant_papers_local = []
-            st.write("**Paper classification**:")
-            for p in papers_info:
-                fname = p.get("filename", "?")
-                rel = p.get("relevant", False)
-                reason = p.get("reason", "(none)")
-                if rel:
-                    relevant_papers_local.append(fname)
-                    st.success(f"{fname} => relevant. Reason: {reason}")
-                else:
-                    st.warning(f"{fname} => NOT relevant. Reason: {reason}")
-            return (relevant_papers_local, main_theme)
+        try:
+            openai.api_key = api_key
+            scope_resp = openai.ChatCompletion.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You check paper snippets for relevance to the user theme."},
+                    {"role": "user", "content": big_input}
+                ],
+                temperature=0.0,
+                max_tokens=1800
+            )
+            scope_decision = scope_resp.choices[0].message.content
+        except Exception as e1:
+            st.error(f"GPT error in Compare-Mode (Manual): {e1}")
+            return ([], "")
+        st.markdown("#### GPT-Output (Outlier-Check / Manual):")
+        st.code(scope_decision, language="json")
+        json_str = scope_decision.strip()
+        # ✅ Korrekturen hier:
+        if json_str.startswith("```
+            json_str = re.sub(r"```[\w]*\n?", "", json_str)
+            json_str = re.sub(r"\n?```
+        try:
+            data_parsed = json.loads(json_str)
+            papers_info = data_parsed.get("papers", [])
+        except Exception as parse_e:
+            st.error(f"Error parsing JSON: {parse_e}")
+            return ([], "")
+        st.write(f"**Main theme (Manual)**: {main_theme}")
+        relevant_papers_local = []
+        st.write("**Paper classification**:")
+        for p in papers_info:
+            fname = p.get("filename", "?")
+            rel = p.get("relevant", False)
+            reason = p.get("reason", "(none)")
+            if rel:
+                relevant_papers_local.append(fname)
+                st.success(f"{fname} => relevant. Reason: {reason}")
+            else:
+                st.warning(f"{fname} => NOT relevant. Reason: {reason}")
+        return (relevant_papers_local, main_theme)
+    else:
+        # GPT-Branch ebenfalls korrigieren:
+        snippet_list = []
+        for name, txt_data in paper_map.items():
+            snippet = txt_data[:700].replace("\n", " ")
+            snippet_list.append(f'{{"filename": "{name}", "snippet": "{snippet}"}}')
+        big_snippet = ",\n".join(snippet_list)
+        big_input = f"""
+Hier sind mehrere Paper in JSON-Form. Bitte ermittele das gemeinsame Hauptthema.
+Dann antworte mir in folgendem JSON-Format: 
+{{
+  "main_theme": "Brief description of the shared topic",
+  "papers": [
+    {{"filename":"...","relevant":true/false,"reason":"Short reason"}}
+  ]
+}}
+
+Only output this JSON, no further explanation:
+
+[{big_snippet}]
+"""
+        try:
+            openai.api_key = api_key
+            scope_resp = openai.ChatCompletion.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are an assistant that thematically filters papers."},
+                    {"role": "user", "content": big_input}
+                ],
+                temperature=0.0,
+                max_tokens=1800
+            )
+            scope_decision = scope_resp.choices.message.content
+        except Exception as e1:
+            st.error(f"GPT error in Compare-Mode: {e1}")
+            return ([], "")
+        st.markdown("#### GPT-Output (Outlier-Check / GPT):")
+        st.code(scope_decision, language="json")
+        json_str = scope_decision.strip()
+        # ✅ Korrekturen hier:
+        if json_str.startswith("```"):
+            json_str = re.sub(r"```
+            json_str = re.sub(r"\n?```", "", json_str)
+        try:
+            data_parsed = json.loads(json_str)
+            main_theme = data_parsed.get("main_theme", "No theme extracted.")
+            papers_info = data_parsed.get("papers", [])
+        except Exception as parse_e:
+            st.error(f"Error parsing JSON: {parse_e}")
+            return ([], "")
+        st.write(f"**Main theme (GPT)**: {main_theme}")
+        relevant_papers_local = []
+        st.write("**Paper classification**:")
+        for p in papers_info:
+            fname = p.get("filename", "?")
+            rel = p.get("relevant", False)
+            reason = p.get("reason", "(none)")
+            if rel:
+                relevant_papers_local.append(fname)
+                st.success(f"{fname} => relevant. Reason: {reason}")
+            else:
+                st.warning(f"{fname} => NOT relevant. Reason: {reason}")
+        return (relevant_papers_local, main_theme)
+
         else:
             snippet_list = []
             for name, txt_data in paper_map.items():
