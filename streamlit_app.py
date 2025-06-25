@@ -25,34 +25,6 @@ import openpyxl
 # Neuer Import für die Übersetzung mit google_trans_new
 from google_trans_new import google_translator
 
-# ✅ NEUE MODULE IMPORTS
-try:
-    from modules.chonkie_scientific_analysis import module_chonkie_search
-    CHONKIE_MODULE_AVAILABLE = True
-except ImportError:
-    CHONKIE_MODULE_AVAILABLE = False
-    def module_chonkie_search():
-        st.error("Chonkie-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/chonkie_scientific_analysis.py")
-
-try:
-    from modules.labelstudio_scientific_images import module_scientific_images
-    LABELSTUDIO_MODULE_AVAILABLE = True
-except ImportError:
-    LABELSTUDIO_MODULE_AVAILABLE = False
-    def module_scientific_images():
-        st.error("Label Studio-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/labelstudio_scientific_images.py")
-
-try:
-    from modules.email_notifications import module_email_notifications
-    EMAIL_MODULE_AVAILABLE = True
-except ImportError:
-    EMAIL_MODULE_AVAILABLE = False
-    def module_email_notifications():
-        st.error("E-Mail-Benachrichtigungs-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/email_notifications.py")
-
 # ------------------------------------------------------------------
 # Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
 # ------------------------------------------------------------------
@@ -117,7 +89,7 @@ def translate_text_openai(text, source_language, target_language, api_key):
         )
         translation = response.choices[0].message.content.strip()
         # Removes leading/trailing quotes
-        if translation and translation[0] in ["'", '"', "'", "„"]:
+        if translation and translation[0] in ["'", '"', "‘", "„"]:
             translation = translation[1:]
             if translation and translation[-1] in ["'", '"']:
                 translation = translation[:-1]
@@ -463,17 +435,12 @@ def module_paperqa2():
 def page_home():
     st.title("Welcome to the Main Menu")
     st.write("Choose a module in the sidebar to proceed.")
-    if os.path.exists("Bild1.jpg"):
-        st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
+    st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
 
 def page_codewords_pubmed():
     st.title("Codewords & PubMed Settings")
-    try:
-        from modules.codewords_pubmed import module_codewords_pubmed
-        module_codewords_pubmed()
-    except ImportError:
-        st.error("Module nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/codewords_pubmed.py")
+    from modules.codewords_pubmed import module_codewords_pubmed
+    module_codewords_pubmed()
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
@@ -508,12 +475,8 @@ def page_excel_online_search():
 def page_online_api_filter():
     st.title("Online-API_Filter (Combined)")
     st.write("Here, you can combine API selection and filtering in one step.")
-    try:
-        from modules.online_api_filter import module_online_api_filter
-        module_online_api_filter()
-    except ImportError:
-        st.error("Module nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/online_api_filter.py")
+    from modules.online_api_filter import module_online_api_filter
+    module_online_api_filter()
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
@@ -676,6 +639,10 @@ def parse_cohort_info(summary_text: str) -> dict:
     if m_orig:
         info["origin"] = m_orig.group(1).strip()
     return info
+
+# ------------------------------------------------------------------
+# (Bereits vorhanden) fetch_pubmed_doi_and_link
+# ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
 # Function for ChatGPT-based scoring search
@@ -887,20 +854,21 @@ def page_analyze_paper():
     if "theme_compare" not in st.session_state:
         st.session_state["theme_compare"] = ""
     
-def do_outlier_logic(paper_map: dict) -> (list, str):
-    """Determines which papers are thematically relevant and possibly a shared main theme."""
-    if theme_mode == "Manually":
-        main_theme = user_defined_theme.strip()
-        if not main_theme:
-            st.error("Please provide a manual main theme!")
-            return ([], "")
-        snippet_list = []
-        for name, txt_data in paper_map.items():
-            snippet = txt_data[:700].replace("\n", " ")
-            snippet_list.append(f'{{"filename": "{name}", "snippet": "{snippet}"}}')
-        big_snippet = ",\n".join(snippet_list)
-        big_input = f"""
+    def do_outlier_logic(paper_map: dict) -> (list, str):
+        """Determines which papers are thematically relevant and possibly a shared main theme."""
+        if theme_mode == "Manually":
+            main_theme = user_defined_theme.strip()
+            if not main_theme:
+                st.error("Please provide a manual main theme!")
+                return ([], "")
+            snippet_list = []
+            for name, txt_data in paper_map.items():
+                snippet = txt_data[:700].replace("\n", " ")
+                snippet_list.append(f'{{"filename": "{name}", "snippet": "{snippet}"}}')
+            big_snippet = ",\n".join(snippet_list)
+            big_input = f"""
 Der Nutzer hat folgendes Hauptthema definiert: '{main_theme}'.
+
 Hier sind mehrere Paper in JSON-Form. Entscheide pro Paper, ob es zu diesem Thema passt oder nicht.
 Gib mir am Ende ein JSON-Format zurück:
 
@@ -915,111 +883,46 @@ Only return the JSON, no extra explanation.
 
 [{big_snippet}]
 """
-        try:
-            openai.api_key = api_key
-            scope_resp = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You check paper snippets for relevance to the user theme."},
-                    {"role": "user", "content": big_input}
-                ],
-                temperature=0.0,
-                max_tokens=1800
-            )
-            scope_decision = scope_resp.choices[0].message.content
-        except Exception as e1:
-            st.error(f"GPT error in Compare-Mode (Manual): {e1}")
-            return ([], "")
-        st.markdown("#### GPT-Output (Outlier-Check / Manual):")
-        st.code(scope_decision, language="json")
-        json_str = scope_decision.strip()
-        # ✅ Korrekturen hier:
-        if json_str.startswith("```"):
-            json_str = re.sub(r"```[\w]*\n?", "", json_str)
-            json_str = re.sub(r"\n?```", "", json_str)
-        try:
-            data_parsed = json.loads(json_str)
-            papers_info = data_parsed.get("papers", [])
-        except Exception as parse_e:
-            st.error(f"Error parsing JSON: {parse_e}")
-            return ([], "")
-        st.write(f"**Main theme (Manual)**: {main_theme}")
-        relevant_papers_local = []
-        st.write("**Paper classification**:")
-        for p in papers_info:
-            fname = p.get("filename", "?")
-            rel = p.get("relevant", False)
-            reason = p.get("reason", "(none)")
-            if rel:
-                relevant_papers_local.append(fname)
-                st.success(f"{fname} => relevant. Reason: {reason}")
-            else:
-                st.warning(f"{fname} => NOT relevant. Reason: {reason}")
-        return (relevant_papers_local, main_theme)
-    else:
-        # GPT-Branch ebenfalls korrigieren:
-        snippet_list = []
-        for name, txt_data in paper_map.items():
-            snippet = txt_data[:700].replace("\n", " ")
-            snippet_list.append(f'{{"filename": "{name}", "snippet": "{snippet}"}}')
-        big_snippet = ",\n".join(snippet_list)
-        big_input = f"""
-Hier sind mehrere Paper in JSON-Form. Bitte ermittele das gemeinsame Hauptthema.
-Dann antworte mir in folgendem JSON-Format: 
-{{
-  "main_theme": "Brief description of the shared topic",
-  "papers": [
-    {{"filename":"...","relevant":true/false,"reason":"Short reason"}}
-  ]
-}}
-
-Only output this JSON, no further explanation:
-
-[{big_snippet}]
-"""
-        try:
-            openai.api_key = api_key
-            scope_resp = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are an assistant that thematically filters papers."},
-                    {"role": "user", "content": big_input}
-                ],
-                temperature=0.0,
-                max_tokens=1800
-            )
-            scope_decision = scope_resp.choices.message.content
-        except Exception as e1:
-            st.error(f"GPT error in Compare-Mode: {e1}")
-            return ([], "")
-        st.markdown("#### GPT-Output (Outlier-Check / GPT):")
-        st.code(scope_decision, language="json")
-        json_str = scope_decision.strip()
-        # ✅ Korrekturen hier:
-        if json_str.startswith("```"):
-            json_str = re.sub(r"```", "", json_str)
-            json_str = re.sub(r"\n?```", "", json_str)
-        try:
-            data_parsed = json.loads(json_str)
-            main_theme = data_parsed.get("main_theme", "No theme extracted.")
-            papers_info = data_parsed.get("papers", [])
-        except Exception as parse_e:
-            st.error(f"Error parsing JSON: {parse_e}")
-            return ([], "")
-        st.write(f"**Main theme (GPT)**: {main_theme}")
-        relevant_papers_local = []
-        st.write("**Paper classification**:")
-        for p in papers_info:
-            fname = p.get("filename", "?")
-            rel = p.get("relevant", False)
-            reason = p.get("reason", "(none)")
-            if rel:
-                relevant_papers_local.append(fname)
-                st.success(f"{fname} => relevant. Reason: {reason}")
-            else:
-                st.warning(f"{fname} => NOT relevant. Reason: {reason}")
-        return (relevant_papers_local, main_theme)
-
+            try:
+                openai.api_key = api_key
+                scope_resp = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You check paper snippets for relevance to the user theme."},
+                        {"role": "user", "content": big_input}
+                    ],
+                    temperature=0.0,
+                    max_tokens=1800
+                )
+                scope_decision = scope_resp.choices[0].message.content
+            except Exception as e1:
+                st.error(f"GPT error in Compare-Mode (Manual): {e1}")
+                return ([], "")
+            st.markdown("#### GPT-Output (Outlier-Check / Manual):")
+            st.code(scope_decision, language="json")
+            json_str = scope_decision.strip()
+            if json_str.startswith("```"):
+                json_str = re.sub(r"```[\w]*\n?", "", json_str)
+                json_str = re.sub(r"\n?```", "", json_str)
+            try:
+                data_parsed = json.loads(json_str)
+                papers_info = data_parsed.get("papers", [])
+            except Exception as parse_e:
+                st.error(f"Error parsing JSON: {parse_e}")
+                return ([], "")
+            st.write(f"**Main theme (Manual)**: {main_theme}")
+            relevant_papers_local = []
+            st.write("**Paper classification**:")
+            for p in papers_info:
+                fname = p.get("filename", "?")
+                rel = p.get("relevant", False)
+                reason = p.get("reason", "(none)")
+                if rel:
+                    relevant_papers_local.append(fname)
+                    st.success(f"{fname} => relevant. Reason: {reason}")
+                else:
+                    st.warning(f"{fname} => NOT relevant. Reason: {reason}")
+            return (relevant_papers_local, main_theme)
         else:
             snippet_list = []
             for name, txt_data in paper_map.items():
@@ -1051,7 +954,7 @@ Only output this JSON, no further explanation:
                     temperature=0.0,
                     max_tokens=1800
                 )
-                scope_decision = scope_resp.choices.message.content
+                scope_decision = scope_resp.choices[0].message.content
             except Exception as e1:
                 st.error(f"GPT error in Compare-Mode: {e1}")
                 return ([], "")
@@ -1059,7 +962,7 @@ Only output this JSON, no further explanation:
             st.code(scope_decision, language="json")
             json_str = scope_decision.strip()
             if json_str.startswith("```"):
-                json_str = re.sub(r"```", "", json_str)
+                json_str = re.sub(r"```[\w]*\n?", "", json_str)
                 json_str = re.sub(r"\n?```", "", json_str)
             try:
                 data_parsed = json.loads(json_str)
@@ -1134,7 +1037,7 @@ Only output this JSON, no further explanation:
             selected_pdf = st.selectbox("Select a PDF for single analysis or '(All)'", pdf_options)
             
             col_analysis, col_contradiction = st.columns(2)
-            
+
             with col_analysis:
                 if st.button("Start Analysis (Single-Mode)"):
                     if selected_pdf == "(All)":
@@ -1287,7 +1190,7 @@ Only output this JSON, no further explanation:
                     st.subheader("Result of (Multi-)Analysis (Single-Mode):")
                     combined_output = "\n\n---\n\n".join(final_result_text)
                     st.markdown(combined_output)
-            
+
             with col_contradiction:
                 st.write("Contradiction Analysis (Uploaded Papers)")
                 if st.button("Start Contradiction Analysis now"):
@@ -1543,8 +1446,6 @@ Only output this JSON, no further explanation:
                     ws["J2"].value = datetime.datetime.now().strftime("%Y-%m-%d")
 
                     # Fill gene / rsNumber
-                    ws["D5"].value = gene_via_text if
-                    # Fill gene / rsNumber
                     ws["D5"].value = gene_via_text if gene_via_text else ""
                     ws["D6"].value = rs_num if rs_num else ""
                     
@@ -1562,8 +1463,8 @@ Only output this JSON, no further explanation:
                             else:
                                 ws[f"E{row_i}"].value = "No rsID => no genotype frequency"
                         else:
-                            ws[f"D{row_i}"].value = ""
-                            ws[f"E{row_i}"].value = ""
+                            ws[f"D{row_i}"] = ""
+                            ws[f"E{row_i}"] = ""
 
                     # Publication year, cohort, key findings
                     ws["C20"].value = year_for_excel
@@ -1730,36 +1631,6 @@ Only output this JSON, no further explanation:
                         st.warning("GPT output could not be parsed as valid JSON.")
 
 # ------------------------------------------------------------------
-# ✅ NEUE MODULE IMPORTS - Hinzugefügte Module
-# ------------------------------------------------------------------
-try:
-    from modules.chonkie_scientific_analysis import module_chonkie_search
-    CHONKIE_MODULE_AVAILABLE = True
-except ImportError:
-    CHONKIE_MODULE_AVAILABLE = False
-    def module_chonkie_search():
-        st.error("🦛 Chonkie-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/chonkie_scientific_analysis.py")
-
-try:
-    from modules.labelstudio_scientific_images import module_scientific_images
-    LABELSTUDIO_MODULE_AVAILABLE = True
-except ImportError:
-    LABELSTUDIO_MODULE_AVAILABLE = False
-    def module_scientific_images():
-        st.error("🖼️ Label Studio-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/labelstudio_scientific_images.py")
-
-try:
-    from modules.email_notifications import module_email_notifications
-    EMAIL_MODULE_AVAILABLE = True
-except ImportError:
-    EMAIL_MODULE_AVAILABLE = False
-    def module_email_notifications():
-        st.error("📧 E-Mail-Benachrichtigungs-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/email_notifications.py")
-
-# ------------------------------------------------------------------
 # NEUE KLASSE & FUNKTION FÜR KI-INHALTSERKENNUNG (AIContentDetector)
 # ------------------------------------------------------------------
 class AIContentDetector:
@@ -1775,16 +1646,19 @@ class AIContentDetector:
     
     def analyze_patterns(self, text):
         """Untersucht typische KI-Schreibmuster"""
+        # Einige einfache Heuristiken/Regex
         patterns = {
-            "wiederholende_phrasen": r'(\b\w+\s+\w+\b)(?=.*\1)',
-            "gleichmäßiger_ton": r'(jedoch|allerdings|dennoch|daher|folglich|somit)',
+            "wiederholende_phrasen": r'(\b\w+\s+\w+\b)(?=.*\1)',  # Beispiel: wiederholte Wortgruppen
+            "gleichmäßiger_ton": r'(jedoch|allerdings|dennoch|daher|folglich|somit)',  # Signalwörter
             "generische_übergänge": r'\b(zunächst|anschließend|abschließend|zusammenfassend)\b'
         }
         
         scores = {}
         for name, pattern in patterns.items():
             matches = re.findall(pattern, text, re.IGNORECASE)
+            # Frequenz pro 100 Wörter
             density = len(matches) / (len(text.split()) / 100 + 1e-8)
+            # Eine einfache Skalierung  (kein echter wissenschaftl. Ansatz)
             scores[name] = min(100, density * 5)
         
         return sum(scores.values()) / len(scores) if scores else 0
@@ -1793,8 +1667,9 @@ class AIContentDetector:
         """Prüft auf konsistente Schreibweise und Ton"""
         paragraphs = text.split('\n\n')
         if len(paragraphs) < 3:
-            return 50
+            return 50  # Zu wenig Text für eine sinnvolle Analyse
         
+        # Satzlängenvariation
         sentences = re.split(r'[.!?]+', text)
         lengths = [len(s.split()) for s in sentences if s.strip()]
         if not lengths:
@@ -1802,17 +1677,20 @@ class AIContentDetector:
         
         avg_length = sum(lengths) / len(lengths)
         variation = sum(abs(l - avg_length) for l in lengths) / len(lengths)
+        
+        # Niedrige Variation => KI-typisch (Heuristik)
         consistency_score = 100 - min(100, variation * 10)
         return consistency_score
     
     def verify_citations(self, text):
-        """Überprüft Zitate auf Plausibilität"""
+        """Überprüft Zitate auf Plausibilität (sehr einfach)"""
         citation_pattern = r'\(([^)]+\d{4}[^)]*)\)'
         citations = re.findall(citation_pattern, text)
         
         if not citations:
-            return 60
+            return 60  # Keine Zitate gefunden => neutraler Wert
         
+        # Einfache Heuristik: sind viele Zitate im gleichen Format?
         formats = {}
         for citation in citations:
             format_key = re.sub(r'[A-Za-z\s]', 'X', citation)
@@ -1823,10 +1701,11 @@ class AIContentDetector:
         return uniformity
     
     def detect_with_api(self, text):
-        """Verwendet externe APIs"""
+        """Verwendet externe APIs (Originality.ai oder Scribbr)"""
         if not self.api_key:
-            return 50
+            return 50  # Keine API => Mittelwert
         
+        # Originality.ai
         if self.api_provider == "originality":
             try:
                 response = requests.post(
@@ -1836,10 +1715,27 @@ class AIContentDetector:
                 )
                 if response.status_code == 200:
                     result = response.json()
+                    # 'score.ai' => 0-1
                     return result.get("score", {}).get("ai", 0.5) * 100
             except Exception as e:
                 print(f"Originality.ai API-Fehler: {e}")
         
+        # Scribbr (Beispiel, es gibt keine offizielle Public-API-Doku)
+        elif self.api_provider == "scribbr":
+            try:
+                response = requests.post(
+                    "https://api.scribbr.com/v1/ai-detection",  # fiktiver Endpunkt
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={"text": text}
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    # Annahme: "ai_probability" => 0-100
+                    return result.get("ai_probability", 50)
+            except Exception as e:
+                print(f"Scribbr API-Fehler: {e}")
+        
+        # Fallback
         return 50
     
     def analyze_text(self, text):
@@ -1848,6 +1744,7 @@ class AIContentDetector:
         for method_name, method_func in self.detection_methods.items():
             scores[method_name] = method_func(text)
         
+        # Gewichtung
         weights = {
             "pattern_analysis": 0.20,
             "consistency_check": 0.20,
@@ -1882,9 +1779,11 @@ def page_ai_content_detection():
     
     st.info("Hier kannst du Text eingeben oder eine Datei hochladen, um eine KI-Analyse durchzuführen.")
     
+    # API-Infos für Originality oder Scribbr
     api_key_input = st.text_input("API Key (optional)", value="", type="password")
     provider_option = st.selectbox("API-Anbieter", ["Kein API-Einsatz", "originality", "scribbr"], index=0)
     
+    # Eingabemethode
     input_mode = st.radio("Eingabemethode für den Text:", ["Direkte Eingabe", "Textdatei hochladen"])
     
     text_data = ""
@@ -1904,6 +1803,7 @@ def page_ai_content_detection():
             st.warning("Bitte Text eingeben oder Datei hochladen.")
             return
         
+        # Detector instanziieren
         if provider_option == "Kein API-Einsatz":
             detector = AIContentDetector(api_key=None, api_provider=None)
         else:
@@ -1933,7 +1833,9 @@ def page_ai_content_detection():
 # Seite: Genotype Frequency Finder
 # ------------------------------------------------------------------
 def page_genotype_finder():
-    """A separate page to look up genotype frequencies via Ensembl for a user-provided rsID & genotype."""
+    """
+    A separate page to look up genotype frequencies via Ensembl for a user-provided rsID & genotype.
+    """
     st.title("Genotype Frequency Finder")
 
     class GenotypeFinder:
@@ -2009,21 +1911,18 @@ def page_genotype_finder():
         st.write(freq_text)
 
 # ------------------------------------------------------------------
-# ✅ ERWEITERTE Sidebar Navigation mit NEUEN BUTTONS
+# Sidebar Navigation & Chatbot
 # ------------------------------------------------------------------
 def sidebar_module_navigation():
     st.sidebar.title("Module Navigation")
 
     pages = {
         "Home": page_home,
-        "🦛 Chonkie": module_chonkie_search,  # ✅ NEUER BUTTON
-        "🖼️ Abbildungen": module_scientific_images,  # ✅ NEUER BUTTON
-        "📧 Benachrichtigungen": module_email_notifications,  # ✅ NEUER BUTTON
         "Online-API_Filter": page_online_api_filter,
         "3) Codewords & PubMed": page_codewords_pubmed,
         "Analyze Paper": page_analyze_paper,
         "Genotype Frequency Finder": page_genotype_finder,
-        "AI-Content Detection": page_ai_content_detection
+        "AI-Content Detection": page_ai_content_detection  # <-- NEU HINZUGEFÜGT
     }
 
     for label, page in pages.items():
@@ -2074,7 +1973,7 @@ def main():
             page_fn()
     
     with col_right:
-        st.subheader("🤖 Chatbot")
+        st.subheader("Chatbot")
         if "chat_history" not in st.session_state:
             st.session_state["chat_history"] = []
         user_input = st.text_input("Your question here", key="chatbot_right_input")
