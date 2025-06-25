@@ -934,9 +934,9 @@ Only return the JSON, no extra explanation.
         st.code(scope_decision, language="json")
         json_str = scope_decision.strip()
         # ✅ Korrekturen hier:
-        if json_str.startswith("```
+        if json_str.startswith("```"):
             json_str = re.sub(r"```[\w]*\n?", "", json_str)
-            json_str = re.sub(r"\n?```
+            json_str = re.sub(r"\n?```", "", json_str)
         try:
             data_parsed = json.loads(json_str)
             papers_info = data_parsed.get("papers", [])
