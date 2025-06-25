@@ -60,6 +60,17 @@ except ImportError:
     LABELSTUDIO_AVAILABLE = False
     print("⚠️ Label Studio SDK nicht verfügbar - installiere mit: pip install label-studio-sdk")
 
+# ✅ EMAIL NOTIFICATIONS - Neue Imports
+try:
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    EMAIL_AVAILABLE = True
+    print("✅ E-Mail-Module verfügbar")
+except ImportError:
+    EMAIL_AVAILABLE = False
+    print("⚠️ E-Mail-Module nicht verfügbar")
+
 # ------------------------------------------------------------------
 # Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
 # ------------------------------------------------------------------
@@ -578,802 +589,295 @@ def page_online_api_filter():
             st.dataframe(df)
 
 # ------------------------------------------------------------------
-# ✅ MODUL 1: CHONKIE - Wissenschaftliche Textsuche
+# ✅ MODUL 1: CHONKIE - Import aus modules
 # ------------------------------------------------------------------
-def module_chonkie_search():
-    """Eigenständiges Chonkie-Modul für wissenschaftliche Textsuche"""
-    st.title("🦛 Chonkie - Wissenschaftliche Textsuche")
-    
-    # Status-Check
-    if not CHONKIE_AVAILABLE:
-        st.error("⚠️ Chonkie nicht verfügbar!")
-        st.info("Installation: `pip install chonkie`")
-        st.info("Demo läuft mit Fallback-Chunker (eingeschränkte Funktionalität)")
-    else:
-        st.success("✅ Chonkie ist verfügbar und bereit!")
-    
-    # Tab-Interface für verschiedene Funktionen
-    tab1, tab2, tab3, tab4 = st.tabs(["📝 Text Chunking", "🔍 Paper Suche", "📊 Batch Analyse", "⚙️ Einstellungen"])
-    
-    with tab1:
-        st.header("Intelligentes Text-Chunking")
-        
-        # Text-Input
-        text_source = st.radio("Text-Quelle:", ["Direkte Eingabe", "PDF Upload", "URL laden"])
-        
-        text_input = ""
-        if text_source == "Direkte Eingabe":
-            text_input = st.text_area("Wissenschaftlichen Text eingeben:", height=200)
-            
-            # Beispieltext-Button
-            if st.button("📖 Beispieltext laden"):
-                text_input = """
-                Cardiovascular disease remains the leading cause of mortality worldwide, affecting millions of individuals annually. 
-                Recent advances in genomic research have identified several genetic variants associated with increased cardiovascular risk. 
-                The APOE gene, particularly the ε4 allele, has been extensively studied for its role in lipid metabolism and atherosclerosis development.
-                
-                In this comprehensive study, we analyzed genetic data from 50,000 participants across multiple cohorts to investigate 
-                the relationship between APOE variants and cardiovascular outcomes. Our methodology included genome-wide association 
-                studies (GWAS), polygenic risk score calculations, and longitudinal follow-up for clinical endpoints.
-                
-                Results demonstrated a significant association between APOE ε4 carriers and increased risk of myocardial infarction 
-                (HR=1.34, 95% CI: 1.21-1.48, p<0.001). Additionally, we observed ethnic differences in risk patterns, with stronger 
-                associations in European populations compared to East Asian cohorts.
-                
-                These findings have important implications for personalized medicine approaches in cardiovascular disease prevention. 
-                Clinical implementation of genetic risk assessment could improve patient stratification and guide targeted interventions.
-                """
-        
-        elif text_source == "PDF Upload":
-            uploaded_pdf = st.file_uploader("PDF-Datei hochladen:", type="pdf")
-            if uploaded_pdf:
-                try:
-                    reader = PyPDF2.PdfReader(uploaded_pdf)
-                    text_input = ""
-                    for page in reader.pages:
-                        text_input += page.extract_text() + "\n"
-                    st.success(f"✅ PDF gelesen: {len(text_input)} Zeichen")
-                except Exception as e:
-                    st.error(f"PDF-Fehler: {e}")
-        
-        elif text_source == "URL laden":
-            url = st.text_input("URL eingeben:")
-            if url and st.button("URL laden"):
-                try:
-                    response = requests.get(url, timeout=10)
-                    text_input = response.text[:50000]  # Begrenze auf 50k Zeichen
-                    st.success(f"✅ URL geladen: {len(text_input)} Zeichen")
-                except Exception as e:
-                    st.error(f"URL-Fehler: {e}")
-        
-        # Chunking-Konfiguration
-        col1, col2 = st.columns(2)
-        with col1:
-            chunker_type = st.selectbox("Chunking-Strategie:", ["auto", "semantic", "sentence", "token"])
-        with col2:
-            max_chunks = st.slider("Max. Chunks:", 1, 20, 8)
-        
-        # Chunking durchführen
-        if text_input and st.button("🚀 Text chunken"):
-            
-            # Chunker initialisieren
-            if CHONKIE_AVAILABLE:
-                if chunker_type == "semantic":
-                    chunker = SemanticChunker(similarity_threshold=0.7, min_chunk_size=200, max_chunk_size=1000)
-                elif chunker_type == "sentence":
-                    chunker = SentenceChunker(chunk_size=800, chunk_overlap=100)
-                elif chunker_type == "token":
-                    chunker = TokenChunker(chunk_size=512, chunk_overlap=50)
-                else:  # auto
-                    if len(text_input) > 10000:
-                        chunker = SemanticChunker(similarity_threshold=0.7)
-                    else:
-                        chunker = TokenChunker(chunk_size=512, chunk_overlap=50)
-            else:
-                chunker = FallbackChunker(chunk_size=800, chunk_overlap=100)
-            
-            # Chunking durchführen
-            with st.spinner("Chonkie verarbeitet den Text..."):
-                start_time = time.time()
-                chunks = chunker.chunk(text_input)
-                limited_chunks = chunks[:max_chunks] if len(chunks) > max_chunks else chunks
-                processing_time = time.time() - start_time
-            
-            # Ergebnisse anzeigen
-            st.success(f"✅ Chunking abgeschlossen in {processing_time:.2f}s")
-            
-            # Statistiken
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Chunks erstellt", len(limited_chunks))
-            with col2:
-                st.metric("Chunker verwendet", chunker_type)
-            with col3:
-                avg_length = sum(len(chunk.text) for chunk in limited_chunks) / len(limited_chunks) if limited_chunks else 0
-                st.metric("Ø Chunk-Größe", f"{avg_length:.0f} Zeichen")
-            with col4:
-                st.metric("Verarbeitungszeit", f"{processing_time:.2f}s")
-            
-            # Chunk-Details
-            st.subheader("📄 Chunk-Details")
-            for i, chunk in enumerate(limited_chunks, 1):
-                with st.expander(f"Chunk {i} ({len(chunk.text)} Zeichen)"):
-                    st.code(chunk.text)
-    
-    with tab2:
-        st.header("Wissenschaftliche Paper-Suche mit Chonkie")
-        
-        # Such-Parameter
-        search_query = st.text_input("Suchbegriff für wissenschaftliche Papers:")
-        search_source = st.selectbox("Datenbank:", ["PubMed", "Europe PMC", "Semantic Scholar", "Alle"])
-        
-        if st.button("🔍 Paper suchen"):
-            if not search_query:
-                st.warning("Bitte Suchbegriff eingeben")
-                return
-            
-            with st.spinner("Suche Papers..."):
-                results = []
-                
-                if search_source in ["PubMed", "Alle"]:
-                    pubmed_results = search_pubmed_simple(search_query)
-                    for result in pubmed_results:
-                        result["Source"] = "PubMed"
-                        if result.get("PMID") != "n/a":
-                            result["Abstract"] = fetch_pubmed_abstract(result["PMID"])
-                    results.extend(pubmed_results)
-                
-                if search_source in ["Europe PMC", "Alle"]:
-                    pmc_results = search_europe_pmc_simple(search_query)
-                    results.extend(pmc_results)
-                
-                if search_source in ["Semantic Scholar", "Alle"]:
-                    scholar_search = SemanticScholarSearch()
-                    scholar_search.search_semantic_scholar(search_query)
-                    results.extend(scholar_search.all_results)
-            
-            st.success(f"✅ {len(results)} Papers gefunden")
-            
-            # Ergebnisse mit Chonkie-Analyse
-            for i, paper in enumerate(results[:5]):  # Erste 5 Papers
-                with st.expander(f"Paper {i+1}: {paper.get('Title', 'Unbekannt')}"):
-                    st.write(f"**Quelle:** {paper.get('Source', 'N/A')}")
-                    st.write(f"**Jahr:** {paper.get('Year', 'N/A')}")
-                    st.write(f"**Journal:** {paper.get('Journal', 'N/A')}")
-                    
-                    abstract = paper.get('Abstract', '')
-                    if abstract and len(abstract) > 100:
-                        st.write("**Abstract:**")
-                        st.write(abstract[:500] + "..." if len(abstract) > 500 else abstract)
-                        
-                        # Chonkie-Analyse des Abstracts
-                        if st.button(f"🦛 Chonkie-Analyse", key=f"chonkie_{i}"):
-                            if CHONKIE_AVAILABLE:
-                                chunker = SemanticChunker(similarity_threshold=0.8)
-                                chunks = chunker.chunk(abstract)
-                                
-                                st.write(f"**Chonkie-Analyse:** {len(chunks)} semantische Chunks gefunden")
-                                for j, chunk in enumerate(chunks):
-                                    st.write(f"*Chunk {j+1}:* {chunk.text}")
-                            else:
-                                st.info("Chonkie nicht verfügbar - Fallback-Analyse")
-    
-    with tab3:
-        st.header("Batch-Analyse mehrerer Dokumente")
-        
-        uploaded_files = st.file_uploader("Mehrere PDFs hochladen:", type="pdf", accept_multiple_files=True)
-        
-        if uploaded_files and st.button("📊 Batch-Analyse starten"):
-            
-            analysis_results = []
-            progress_bar = st.progress(0)
-            
-            for i, pdf_file in enumerate(uploaded_files):
-                progress_bar.progress((i + 1) / len(uploaded_files))
-                
-                # PDF Text extrahieren
-                try:
-                    reader = PyPDF2.PdfReader(pdf_file)
-                    text = ""
-                    for page in reader.pages:
-                        text += page.extract_text() + "\n"
-                    
-                    if CHONKIE_AVAILABLE:
-                        # Chonkie-Analyse
-                        chunker = SemanticChunker(similarity_threshold=0.7)
-                        chunks = chunker.chunk(text)
-                        
-                        analysis_results.append({
-                            "Datei": pdf_file.name,
-                            "Text-Länge": len(text),
-                            "Anzahl Chunks": len(chunks),
-                            "Durchschnittliche Chunk-Größe": sum(len(c.text) for c in chunks) / len(chunks) if chunks else 0,
-                            "Status": "✅ Erfolgreich"
-                        })
-                    else:
-                        analysis_results.append({
-                            "Datei": pdf_file.name,
-                            "Text-Länge": len(text),
-                            "Status": "⚠️ Fallback-Modus"
-                        })
-                        
-                except Exception as e:
-                    analysis_results.append({
-                        "Datei": pdf_file.name,
-                        "Status": f"❌ Fehler: {str(e)}"
-                    })
-            
-            # Ergebnisse anzeigen
-            st.subheader("Batch-Analyse Ergebnisse")
-            df = pd.DataFrame(analysis_results)
-            st.dataframe(df)
-            
-            # Excel-Export
-            if st.button("📋 Als Excel exportieren"):
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df.to_excel(writer, sheet_name='Chonkie_Batch_Analysis', index=False)
-                
-                st.download_button(
-                    label="📥 Excel herunterladen",
-                    data=output.getvalue(),
-                    file_name=f"chonkie_batch_analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-    
-    with tab4:
-        st.header("Chonkie-Einstellungen")
-        
-        st.subheader("Chunker-Konfiguration")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Semantic Chunker:**")
-            semantic_threshold = st.slider("Similarity Threshold:", 0.1, 1.0, 0.7)
-            semantic_min_size = st.number_input("Min. Chunk Size:", 50, 1000, 200)
-            semantic_max_size = st.number_input("Max. Chunk Size:", 500, 5000, 1000)
-        
-        with col2:
-            st.write("**Token Chunker:**")
-            token_chunk_size = st.number_input("Token Chunk Size:", 128, 2048, 512)
-            token_overlap = st.number_input("Token Overlap:", 0, 500, 50)
-        
-        st.subheader("Performance-Einstellungen")
-        max_concurrent = st.slider("Max. gleichzeitige Verarbeitungen:", 1, 10, 3)
-        timeout_seconds = st.slider("Timeout (Sekunden):", 10, 300, 60)
-        
-        if st.button("💾 Einstellungen speichern"):
-            # Hier würde man die Einstellungen in session_state oder Datei speichern
-            st.success("Einstellungen gespeichert!")
-        
-        st.subheader("System-Info")
-        st.info(f"Chonkie Status: {'✅ Verfügbar' if CHONKIE_AVAILABLE else '❌ Nicht verfügbar'}")
-        if CHONKIE_AVAILABLE:
-            st.code("pip install chonkie  # ✅ Installiert")
-        else:
-            st.code("pip install chonkie  # ❌ Fehlt")
+try:
+    from modules.chonkie_scientific_analysis import module_chonkie_search
+    CHONKIE_MODULE_AVAILABLE = True
+except ImportError:
+    CHONKIE_MODULE_AVAILABLE = False
+    def module_chonkie_search():
+        st.error("Chonkie-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/chonkie_scientific_analysis.py")
 
 # ------------------------------------------------------------------
-# ✅ MODUL 2: SCIENTIFIC IMAGES - Label Studio Integration
+# ✅ MODUL 2: SCIENTIFIC IMAGES - Import aus modules
 # ------------------------------------------------------------------
-def module_scientific_images():
-    """Eigenständiges Modul für wissenschaftliche Bildanalyse mit Label Studio"""
-    st.title("🖼️ Wissenschaftliche Bildanalyse mit Label Studio")
-    
-    # Status-Check
-    if not LABELSTUDIO_AVAILABLE:
-        st.warning("⚠️ Label Studio SDK nicht verfügbar!")
-        st.info("Installation: `pip install label-studio-sdk`")
-        st.info("Funktionalität ist eingeschränkt ohne Label Studio")
-    else:
-        st.success("✅ Label Studio SDK ist verfügbar!")
-    
-    # Tab-Interface
-    tab1, tab2, tab3, tab4 = st.tabs(["📷 Bild Upload", "🏷️ Label Studio", "📊 Analyse", "🔧 Tools"])
-    
-    with tab1:
-        st.header("Wissenschaftliche Bilder und Tabellen hochladen")
+try:
+    from modules.labelstudio_scientific_images import module_scientific_images
+    LABELSTUDIO_MODULE_AVAILABLE = True
+except ImportError:
+    LABELSTUDIO_MODULE_AVAILABLE = False
+    def module_scientific_images():
+        st.error("Label Studio-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/labelstudio_scientific_images.py")
+
+# ------------------------------------------------------------------
+# ✅ MODUL 3: EMAIL NOTIFICATIONS - Import aus modules
+# ------------------------------------------------------------------
+try:
+    from modules.email_notifications import module_email_notifications
+    EMAIL_MODULE_AVAILABLE = True
+except ImportError:
+    EMAIL_MODULE_AVAILABLE = False
+    def module_email_notifications():
+        st.title("📧 E-Mail-Benachrichtigungen für neue Papers")
         
-        # Upload-Optionen
-        upload_source = st.radio("Quelle:", ["Direkt hochladen", "Aus PDF extrahieren", "URL laden"])
-        
-        uploaded_images = []
-        
-        if upload_source == "Direkt hochladen":
-            uploaded_files = st.file_uploader(
-                "Bilder hochladen:", 
-                type=["png", "jpg", "jpeg", "tiff", "bmp"], 
-                accept_multiple_files=True
-            )
-            if uploaded_files:
-                uploaded_images = uploaded_files
-        
-        elif upload_source == "Aus PDF extrahieren":
-            uploaded_pdf = st.file_uploader("PDF für Bild-Extraktion:", type="pdf")
-            
-            if uploaded_pdf and st.button("🔍 Bilder aus PDF extrahieren"):
-                with st.spinner("Extrahiere Bilder..."):
-                    try:
-                        with pdfplumber.open(uploaded_pdf) as pdf:
-                            extracted_images = []
-                            
-                            for page_num, page in enumerate(pdf.pages):
-                                images = page.images
-                                
-                                for img_index, img_dict in enumerate(images):
-                                    try:
-                                        # Extrahiere Bild
-                                        x0, y0, x1, y1 = img_dict['x0'], img_dict['y0'], img_dict['x1'], img_dict['y1']
-                                        cropped_image = page.crop((x0, y0, x1, y1)).to_image()
-                                        
-                                        # Konvertiere zu PIL Image
-                                        img_pil = cropped_image.original
-                                        
-                                        # Speichere temporär
-                                        img_bytes = io.BytesIO()
-                                        img_pil.save(img_bytes, format='PNG')
-                                        img_bytes.seek(0)
-                                        
-                                        extracted_images.append({
-                                            'name': f"page_{page_num+1}_img_{img_index+1}.png",
-                                            'data': img_bytes,
-                                            'image': img_pil
-                                        })
-                                        
-                                    except Exception as e:
-                                        st.warning(f"Fehler bei Bild {img_index+1} auf Seite {page_num+1}: {e}")
-                            
-                            st.success(f"✅ {len(extracted_images)} Bilder extrahiert")
-                            
-                            # Zeige extrahierte Bilder
-                            if extracted_images:
-                                st.subheader("Extrahierte Bilder:")
-                                cols = st.columns(min(3, len(extracted_images)))
-                                
-                                for i, img_data in enumerate(extracted_images):
-                                    with cols[i % 3]:
-                                        st.image(img_data['image'], caption=img_data['name'], width=200)
-                                
-                                # Speichere in session state
-                                st.session_state['extracted_images'] = extracted_images
-                    
-                    except Exception as e:
-                        st.error(f"PDF-Verarbeitung fehlgeschlagen: {e}")
-        
-        elif upload_source == "URL laden":
-            image_url = st.text_input("Bild-URL:")
-            if image_url and st.button("🌐 Bild von URL laden"):
-                try:
-                    response = requests.get(image_url, timeout=10)
-                    img = Image.open(io.BytesIO(response.content))
-                    st.image(img, caption="Geladenes Bild", width=400)
-                    
-                    # Speichere in session state
-                    st.session_state['url_image'] = {
-                        'url': image_url,
-                        'image': img
-                    }
-                    
-                except Exception as e:
-                    st.error(f"URL-Laden fehlgeschlagen: {e}")
-        
-        # Zeige hochgeladene Bilder
-        if uploaded_images:
-            st.subheader("Hochgeladene Bilder:")
-            
-            cols = st.columns(min(3, len(uploaded_images)))
-            for i, img_file in enumerate(uploaded_images):
-                with cols[i % 3]:
-                    img = Image.open(img_file)
-                    st.image(img, caption=img_file.name, width=200)
-                    
-                    # Bild-Info
-                    st.write(f"**Größe:** {img.size}")
-                    st.write(f"**Format:** {img.format}")
-                    st.write(f"**Modus:** {img.mode}")
-    
-    with tab2:
-        st.header("Label Studio Integration")
-        
-        if not LABELSTUDIO_AVAILABLE:
-            st.error("Label Studio SDK ist nicht verfügbar!")
-            st.info("Installiere mit: `pip install label-studio-sdk`")
+        if not EMAIL_AVAILABLE:
+            st.error("E-Mail-Module nicht verfügbar!")
+            st.info("Installiere missing dependencies: smtplib ist normalerweise verfügbar")
             return
         
-        # Label Studio Konfiguration
-        st.subheader("Label Studio Verbindung")
+        st.success("✅ E-Mail-Benachrichtigungen verfügbar!")
         
-        ls_url = st.text_input("Label Studio URL:", value="http://localhost:8080")
-        ls_api_key = st.text_input("API Key:", type="password")
+        # Tab-Interface
+        tab1, tab2, tab3, tab4 = st.tabs(["⚙️ Setup", "🔍 Suchen", "📧 Senden", "📊 Status"])
         
-        if st.button("🔗 Verbindung testen"):
-            try:
-                # Test Label Studio Verbindung
-                ls = label_studio_sdk.Client(url=ls_url, api_key=ls_api_key)
-                projects = ls.get_projects()
-                st.success(f"✅ Verbindung erfolgreich! {len(projects)} Projekte gefunden.")
+        with tab1:
+            st.header("E-Mail Server Konfiguration")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                smtp_server = st.text_input("SMTP Server:", value="smtp.gmail.com")
+                smtp_port = st.number_input("SMTP Port:", value=587, min_value=1, max_value=65535)
+            
+            with col2:
+                sender_email = st.text_input("Absender E-Mail:")
+                sender_password = st.text_input("E-Mail Passwort:", type="password")
+            
+            use_tls = st.checkbox("TLS verwenden", value=True)
+            
+            if st.button("🔧 E-Mail-Konfiguration speichern"):
+                st.session_state["email_config"] = {
+                    "smtp_server": smtp_server,
+                    "smtp_port": smtp_port,
+                    "email": sender_email,
+                    "password": sender_password,
+                    "use_tls": use_tls
+                }
+                st.success("✅ E-Mail-Konfiguration gespeichert!")
+            
+            st.subheader("📋 Such-Alerts konfigurieren")
+            
+            alert_name = st.text_input("Alert-Name:")
+            keywords = st.text_input("Suchbegriffe:")
+            recipient_emails = st.text_area("Empfänger E-Mails (eine pro Zeile):")
+            
+            databases = st.multiselect("Datenbanken:", ["PubMed", "Europe PMC", "Semantic Scholar"])
+            frequency = st.selectbox("Häufigkeit:", ["Täglich", "Wöchentlich", "Monatlich"])
+            
+            if st.button("➕ Alert hinzufügen"):
+                if "alerts" not in st.session_state:
+                    st.session_state["alerts"] = []
                 
-                # Speichere Verbindung
-                st.session_state['label_studio'] = {
-                    'client': ls,
-                    'url': ls_url,
-                    'api_key': ls_api_key
+                new_alert = {
+                    "name": alert_name,
+                    "keywords": keywords,
+                    "recipients": recipient_emails.split('\n'),
+                    "databases": databases,
+                    "frequency": frequency,
+                    "created": datetime.datetime.now().isoformat(),
+                    "active": True
                 }
                 
-            except Exception as e:
-                st.error(f"Verbindung fehlgeschlagen: {e}")
+                st.session_state["alerts"].append(new_alert)
+                st.success(f"✅ Alert '{alert_name}' hinzugefügt!")
         
-        # Projekt-Management
-        if 'label_studio' in st.session_state:
-            st.subheader("Projekt-Management")
+        with tab2:
+            st.header("🔍 Manuelle Suche & Benachrichtigung")
             
-            # Neue Projekt erstellen
-            with st.expander("Neues Projekt erstellen"):
-                project_name = st.text_input("Projekt-Name:")
-                project_description = st.text_area("Beschreibung:")
-                
-                # Label-Konfiguration für wissenschaftliche Bilder
-                label_config = st.selectbox("Vordefinierte Konfiguration:", [
-                    "Tabellen-Erkennung",
-                    "Diagramm-Analyse", 
-                    "Mikroskopie-Annotation",
-                    "Molekular-Strukturen",
-                    "Benutzerdefiniert"
-                ])
-                
-                if label_config == "Tabellen-Erkennung":
-                    config_xml = """
-                    <View>
-                        <Image name="image" value="$image"/>
-                        <RectangleLabels name="table" toName="image">
-                            <Label value="Table" background="red"/>
-                            <Label value="Header" background="blue"/>
-                            <Label value="Cell" background="green"/>
-                            <Label value="Caption" background="yellow"/>
-                        </RectangleLabels>
-                    </View>
-                    """
-                elif label_config == "Diagramm-Analyse":
-                    config_xml = """
-                    <View>
-                        <Image name="image" value="$image"/>
-                        <RectangleLabels name="chart" toName="image">
-                            <Label value="Bar_Chart" background="red"/>
-                            <Label value="Line_Chart" background="blue"/>
-                            <Label value="Pie_Chart" background="green"/>
-                            <Label value="Scatter_Plot" background="yellow"/>
-                            <Label value="Axis" background="purple"/>
-                            <Label value="Legend" background="orange"/>
-                        </RectangleLabels>
-                    </View>
-                    """
-                else:
-                    config_xml = st.text_area("XML-Konfiguration:", height=200)
-                
-                if st.button("🏗️ Projekt erstellen"):
-                    if project_name and config_xml:
-                        try:
-                            ls_client = st.session_state['label_studio']['client']
-                            project = ls_client.start_project(
-                                title=project_name,
-                                description=project_description,
-                                label_config=config_xml
-                            )
-                            st.success(f"✅ Projekt '{project_name}' erstellt!")
-                            
-                        except Exception as e:
-                            st.error(f"Projekt-Erstellung fehlgeschlagen: {e}")
-                    else:
-                        st.warning("Name und Konfiguration sind erforderlich!")
+            search_keywords = st.text_input("Suchbegriffe für einmalige Suche:")
+            search_databases = st.multiselect("Datenbanken:", ["PubMed", "Europe PMC", "Semantic Scholar"], default=["PubMed"])
+            days_back = st.slider("Tage zurück:", 1, 30, 7)
             
-            # Bestehende Projekte anzeigen
-            st.subheader("Bestehende Projekte")
-            try:
-                ls_client = st.session_state['label_studio']['client']
-                projects = ls_client.get_projects()
+            if st.button("🔍 Suche starten"):
+                if not search_keywords:
+                    st.warning("Bitte Suchbegriffe eingeben!")
+                    return
                 
-                if projects:
-                    for project in projects:
-                        with st.expander(f"Projekt: {project.get_params()['title']}"):
-                            st.write(f"**ID:** {project.get_params()['id']}")
-                            st.write(f"**Beschreibung:** {project.get_params().get('description', 'Keine')}")
-                            st.write(f"**Tasks:** {len(project.get_tasks())}")
-                            
-                            if st.button(f"📤 Bilder hochladen", key=f"upload_{project.get_params()['id']}"):
-                                # Upload-Logic hier
-                                st.info("Upload-Funktionalität würde hier implementiert")
-                else:
-                    st.info("Keine Projekte gefunden.")
+                all_papers = []
+                
+                with st.spinner("Suche nach neuen Papers..."):
+                    if "PubMed" in search_databases:
+                        pubmed_results = search_pubmed_simple(search_keywords)
+                        for result in pubmed_results:
+                            result["Source"] = "PubMed"
+                            if result.get("PMID") != "n/a":
+                                result["Abstract"] = fetch_pubmed_abstract(result["PMID"])
+                        all_papers.extend(pubmed_results)
                     
-            except Exception as e:
-                st.error(f"Fehler beim Laden der Projekte: {e}")
-    
-    with tab3:
-        st.header("Bildanalyse und Auswertung")
+                    if "Europe PMC" in search_databases:
+                        pmc_results = search_europe_pmc_simple(search_keywords)
+                        all_papers.extend(pmc_results)
+                    
+                    if "Semantic Scholar" in search_databases:
+                        scholar_search = SemanticScholarSearch()
+                        scholar_search.search_semantic_scholar(search_keywords)
+                        all_papers.extend(scholar_search.all_results)
+                
+                st.session_state["found_papers"] = all_papers
+                st.success(f"✅ {len(all_papers)} Papers gefunden!")
+                
+                # Zeige Ergebnisse
+                if all_papers:
+                    for i, paper in enumerate(all_papers[:5]):
+                        with st.expander(f"Paper {i+1}: {paper.get('Title', 'Unbekannt')}"):
+                            st.write(f"**Quelle:** {paper.get('Source', 'N/A')}")
+                            st.write(f"**Jahr:** {paper.get('Year', 'N/A')}")
+                            st.write(f"**Journal:** {paper.get('Journal', 'N/A')}")
+                            if paper.get('Abstract'):
+                                st.write(f"**Abstract:** {paper['Abstract'][:300]}...")
         
-        # Mock-Analyse für wissenschaftliche Bilder
-        st.subheader("Automatische Bild-Klassifikation")
-        
-        if uploaded_images or 'extracted_images' in st.session_state:
+        with tab3:
+            st.header("📧 E-Mail versenden")
             
-            analysis_type = st.selectbox("Analyse-Typ:", [
-                "Tabellen-Erkennung",
-                "Diagramm-Klassifikation",
-                "Text-Extraktion (OCR)",
-                "Objekt-Erkennung",
-                "Qualitäts-Bewertung"
-            ])
+            if "found_papers" not in st.session_state:
+                st.info("Führe erst eine Suche durch!")
+                return
             
-            if st.button("🔍 Analyse starten"):
+            if "email_config" not in st.session_state:
+                st.warning("Bitte erst E-Mail-Konfiguration speichern!")
+                return
+            
+            papers = st.session_state["found_papers"]
+            
+            if not papers:
+                st.info("Keine Papers zum Versenden gefunden.")
+                return
+            
+            st.write(f"**Gefundene Papers:** {len(papers)}")
+            
+            recipient_email = st.text_input("Empfänger E-Mail:")
+            email_subject = st.text_input("Betreff:", value=f"Neue wissenschaftliche Papers - {len(papers)} gefunden")
+            
+            include_abstracts = st.checkbox("Abstracts einschließen", value=True)
+            max_papers = st.slider("Max. Papers pro E-Mail:", 1, 20, 10)
+            
+            # E-Mail Vorschau
+            st.subheader("📄 E-Mail Vorschau")
+            
+            email_body = f"""
+📚 Neue wissenschaftliche Papers gefunden
+{'='*50}
+
+Anzahl gefundener Papers: {len(papers)}
+Datum: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+📄 Paper-Details:
+{'-'*30}
+"""
+            
+            for i, paper in enumerate(papers[:max_papers], 1):
+                email_body += f"""
+{i}. {paper.get('Title', 'Unbekannt')}
+   📖 Journal: {paper.get('Journal', 'N/A')}
+   📅 Jahr: {paper.get('Year', 'N/A')}
+   🏷️ Quelle: {paper.get('Source', 'N/A')}
+"""
+                if include_abstracts and paper.get('Abstract'):
+                    abstract = paper['Abstract'][:300] + "..." if len(paper['Abstract']) > 300 else paper['Abstract']
+                    email_body += f"   📋 Abstract: {abstract}\n"
+                email_body += "\n"
+            
+            email_body += """
+{'='*50}
+Diese Benachrichtigung wurde automatisch generiert.
+
+Powered by Streamlit Scientific Paper Notification System
+"""
+            
+            with st.expander("E-Mail Inhalt anzeigen"):
+                st.code(email_body)
+            
+            if st.button("📧 E-Mail senden"):
+                config = st.session_state["email_config"]
                 
-                # Mock-Analyse-Ergebnisse
-                with st.spinner(f"Führe {analysis_type} durch..."):
-                    time.sleep(2)  # Simuliere Verarbeitung
+                try:
+                    # SMTP-Verbindung
+                    server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
                     
-                    if analysis_type == "Tabellen-Erkennung":
-                        results = {
-                            "Erkannte Tabellen": 3,
-                            "Konfidenz": 0.89,
-                            "Zeilen erkannt": 15,
-                            "Spalten erkannt": 6,
-                            "Qualität": "Hoch"
-                        }
-                    elif analysis_type == "Diagramm-Klassifikation":
-                        results = {
-                            "Diagramm-Typ": "Bar Chart",
-                            "Konfidenz": 0.95,
-                            "Achsen erkannt": True,
-                            "Legende erkannt": True,
-                            "Datenpunkte": 12
-                        }
-                    elif analysis_type == "Text-Extraktion (OCR)":
-                        results = {
-                            "Extrahierter Text": "Sample extracted text from scientific figure...",
-                            "Wörter erkannt": 45,
-                            "Konfidenz": 0.87,
-                            "Sprache": "Englisch"
-                        }
+                    if config.get('use_tls', True):
+                        server.starttls()
                     
-                    # Ergebnisse anzeigen
-                    st.success("✅ Analyse abgeschlossen!")
+                    server.login(config['email'], config['password'])
+                    
+                    # E-Mail erstellen
+                    msg = MIMEMultipart()
+                    msg['From'] = config['email']
+                    msg['To'] = recipient_email
+                    msg['Subject'] = email_subject
+                    
+                    # Body hinzufügen
+                    msg.attach(MIMEText(email_body, 'plain', 'utf-8'))
+                    
+                    # E-Mail senden
+                    text = msg.as_string()
+                    server.sendmail(config['email'], [recipient_email], text)
+                    server.quit()
+                    
+                    st.success(f"✅ E-Mail erfolgreich an {recipient_email} gesendet!")
+                    
+                except Exception as e:
+                    st.error(f"❌ E-Mail-Versand fehlgeschlagen: {e}")
+        
+        with tab4:
+            st.header("📊 Alert Status & Verwaltung")
+            
+            if "alerts" not in st.session_state or not st.session_state["alerts"]:
+                st.info("Keine Alerts konfiguriert.")
+                return
+            
+            st.subheader("🔔 Aktive Alerts")
+            
+            alerts = st.session_state["alerts"]
+            
+            for i, alert in enumerate(alerts):
+                with st.expander(f"Alert: {alert['name']} ({'✅ Aktiv' if alert['active'] else '❌ Inaktiv'})"):
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.subheader("Ergebnisse:")
-                        for key, value in results.items():
-                            st.metric(key, value)
+                        st.write(f"**Keywords:** {alert['keywords']}")
+                        st.write(f"**Datenbanken:** {', '.join(alert['databases'])}")
+                        st.write(f"**Häufigkeit:** {alert['frequency']}")
                     
                     with col2:
-                        st.subheader("Visualisierung:")
-                        # Mock-Chart
-                        chart_data = pd.DataFrame({
-                            'Kategorie': ['Tabellen', 'Diagramme', 'Text', 'Sonstige'],
-                            'Anzahl': [3, 2, 5, 1]
-                        })
-                        st.bar_chart(chart_data.set_index('Kategorie'))
-        
-        else:
-            st.info("Bitte erst Bilder hochladen oder aus PDF extrahieren.")
-        
-        # Export-Optionen
-        st.subheader("Ergebnisse exportieren")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("📋 Als CSV"):
-                st.info("CSV-Export würde hier erfolgen")
-        
-        with col2:
-            if st.button("📊 Als Excel"):
-                st.info("Excel-Export würde hier erfolgen")
-        
-        with col3:
-            if st.button("📄 Als PDF"):
-                st.info("PDF-Report würde hier erstellt")
-    
-    with tab4:
-        st.header("Bild-Verarbeitungs-Tools")
-        
-        # Bildbearbeitung
-        if uploaded_images:
-            selected_image = st.selectbox("Bild auswählen:", [img.name for img in uploaded_images])
+                        st.write(f"**Empfänger:** {len(alert['recipients'])}")
+                        st.write(f"**Erstellt:** {alert['created'][:10]}")
+                        st.write(f"**Status:** {'Aktiv' if alert['active'] else 'Inaktiv'}")
+                    
+                    # Alert-Steuerung
+                    col_a, col_b, col_c = st.columns(3)
+                    
+                    with col_a:
+                        if st.button(f"▶️ Test", key=f"test_{i}"):
+                            st.info(f"Test-Suche für '{alert['name']}' würde hier durchgeführt")
+                    
+                    with col_b:
+                        if alert['active']:
+                            if st.button(f"⏸️ Pausieren", key=f"pause_{i}"):
+                                st.session_state["alerts"][i]['active'] = False
+                                st.rerun()
+                        else:
+                            if st.button(f"▶️ Aktivieren", key=f"activate_{i}"):
+                                st.session_state["alerts"][i]['active'] = True
+                                st.rerun()
+                    
+                    with col_c:
+                        if st.button(f"🗑️ Löschen", key=f"delete_{i}"):
+                            st.session_state["alerts"].pop(i)
+                            st.rerun()
             
-            if selected_image:
-                # Lade das ausgewählte Bild
-                selected_img_file = next(img for img in uploaded_images if img.name == selected_image)
-                img = Image.open(selected_img_file)
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.subheader("Original")
-                    st.image(img, width=300)
-                
-                with col2:
-                    st.subheader("Bearbeitet")
-                    
-                    # Bearbeitungsoptionen
-                    brightness = st.slider("Helligkeit:", 0.5, 2.0, 1.0)
-                    contrast = st.slider("Kontrast:", 0.5, 2.0, 1.0)
-                    
-                    # Anwenden der Bearbeitung
-                    from PIL import ImageEnhance
-                    
-                    enhancer = ImageEnhance.Brightness(img)
-                    img_bright = enhancer.enhance(brightness)
-                    
-                    enhancer = ImageEnhance.Contrast(img_bright)
-                    img_final = enhancer.enhance(contrast)
-                    
-                    st.image(img_final, width=300)
-                    
-                    # Download-Button für bearbeitetes Bild
-                    if st.button("💾 Bearbeitetes Bild speichern"):
-                        buf = io.BytesIO()
-                        img_final.save(buf, format='PNG')
-                        
-                        st.download_button(
-                            label="📥 Download",
-                            data=buf.getvalue(),
-                            file_name=f"edited_{selected_image}",
-                            mime="image/png"
-                        )
-        
-        # Batch-Verarbeitung
-        st.subheader("Batch-Verarbeitung")
-        
-        if uploaded_images and len(uploaded_images) > 1:
-            batch_operation = st.selectbox("Batch-Operation:", [
-                "Größe ändern",
-                "Format konvertieren", 
-                "Wasserzeichen hinzufügen",
-                "Qualitäts-Check"
-            ])
+            # Zusammenfassung
+            st.subheader("📈 Zusammenfassung")
+            active_alerts = sum(1 for alert in alerts if alert['active'])
             
-            if batch_operation == "Größe ändern":
-                new_width = st.number_input("Neue Breite:", 100, 2000, 800)
-                new_height = st.number_input("Neue Höhe:", 100, 2000, 600)
-            
-            if st.button("🔄 Batch-Verarbeitung starten"):
-                progress_bar = st.progress(0)
-                processed_images = []
-                
-                for i, img_file in enumerate(uploaded_images):
-                    progress_bar.progress((i + 1) / len(uploaded_images))
-                    
-                    img = Image.open(img_file)
-                    
-                    if batch_operation == "Größe ändern":
-                        img_processed = img.resize((new_width, new_height))
-                    else:
-                        img_processed = img
-                    
-                    processed_images.append(img_processed)
-                
-                st.success(f"✅ {len(processed_images)} Bilder verarbeitet!")
-
-# ------------------------------------------------------------------
-# Important Classes for Analysis (existing code...)
-# ------------------------------------------------------------------
-class PaperAnalyzer:
-    def __init__(self, model="gpt-3.5-turbo"):
-        self.model = model
-    
-    def extract_text_from_pdf(self, pdf_file):
-        """Extracts raw text via PyPDF2."""
-        reader = PyPDF2.PdfReader(pdf_file)
-        text = ""
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-        return text
-    
-    def analyze_with_openai(self, text, prompt_template, api_key):
-        """Helper function to call OpenAI via ChatCompletion."""
-        import openai
-        openai.api_key = api_key
-        if len(text) > 15000:
-            text = text[:15000] + "..."
-        prompt = prompt_template.format(text=text)
-        response = openai.ChatCompletion.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are an expert in scientific paper analysis."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=1500
-        )
-        return response.choices[0].message.content
-    
-    def summarize(self, text, api_key):
-        """Creates a summary in German."""
-        prompt = (
-            "Erstelle eine strukturierte Zusammenfassung des folgenden wissenschaftlichen Papers. "
-            "Gliedere sie in mindestens vier klar getrennte Abschnitte (z.B. 1. Hintergrund, 2. Methodik, 3. Ergebnisse, 4. Schlussfolgerungen). "
-            "Verwende maximal 500 Wörter:\n\n{text}"
-        )
-        return self.analyze_with_openai(text, prompt, api_key)
-    
-    def extract_key_findings(self, text, api_key):
-        """Extract the 5 most important findings."""
-        prompt = (
-            "Extrahiere die 5 wichtigsten Erkenntnisse aus diesem wissenschaftlichen Paper. "
-            "Liste sie mit Bulletpoints auf:\n\n{text}"
-        )
-        return self.analyze_with_openai(text, prompt, api_key)
-    
-    def identify_methods(self, text, api_key):
-        """Identify methods and techniques used in the paper."""
-        prompt = (
-            "Identifiziere und beschreibe die im Paper verwendeten Methoden und Techniken. "
-            "Gib zu jeder Methode eine kurze Erklärung:\n\n{text}"
-        )
-        return self.analyze_with_openai(text, prompt, api_key)
-    
-    def evaluate_relevance(self, text, topic, api_key):
-        """Rates relevance to the topic on a scale of 1-10."""
-        prompt = (
-            f"Bewerte die Relevanz dieses Papers für das Thema '{topic}' auf einer Skala von 1-10. "
-            f"Begründe deine Bewertung:\n\n{{text}}"
-        )
-        return self.analyze_with_openai(text, prompt, api_key)
-
-class AlleleFrequencyFinder:
-    """Class for retrieving and displaying allele frequencies from various sources (Ensembl primarily)."""
-    def __init__(self):
-        self.ensembl_server = "https://rest.ensembl.org"
-        self.max_retries = 3
-        self.retry_delay = 2  # seconds between retries
-
-    def get_allele_frequencies(self, rs_id: str, retry_count: int = 0) -> Optional[Dict[str, Any]]:
-        """Fetches allele frequencies from Ensembl."""
-        if not rs_id.startswith("rs"):
-            rs_id = f"rs{rs_id}"
-        endpoint = f"/variation/human/{rs_id}?pops=1"
-        url = f"{self.ensembl_server}{endpoint}"
-        try:
-            response = requests.get(url, headers={"Content-Type": "application/json"}, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError:
-            if response.status_code == 500 and retry_count < self.max_retries:
-                time.sleep(self.retry_delay)
-                return self.get_allele_frequencies(rs_id, retry_count + 1)
-            elif response.status_code == 404:
-                return None
-            else:
-                return None
-        except requests.exceptions.RequestException:
-            if retry_count < self.max_retries:
-                time.sleep(self.retry_delay)
-                return self.get_allele_frequencies(rs_id, retry_count + 1)
-            return None
-    
-    def try_alternative_source(self, rs_id: str) -> Optional[Dict[str, Any]]:
-        return None
-    
-    def build_freq_info_text(self, data: Dict[str, Any]) -> str:
-        """Generates a short text about allele frequencies in ENGLISH for the Excel."""
-        if not data:
-            return "No data from Ensembl"
-        maf = data.get("MAF", None)
-        pops = data.get("populations", [])
-        out = []
-        out.append(f"MAF={maf}" if maf else "MAF=n/a")
-        if pops:
-            max_pop = 2
-            for i, pop in enumerate(pops):
-                if i >= max_pop:
-                    break
-                pop_name = pop.get('population', 'N/A')
-                allele = pop.get('allele', 'N/A')
-                freq = pop.get('frequency', 'N/A')
-                out.append(f"{pop_name}:{allele}={freq}")
-        else:
-            out.append("No population data found.")
-        return " | ".join(out)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Gesamt Alerts", len(alerts))
+            with col2:
+                st.metric("Aktive Alerts", active_alerts)
+            with col3:
+                st.metric("Inaktive Alerts", len(alerts) - active_alerts)
 
 # Page functions for existing modules
 def page_analyze_paper():
@@ -1392,7 +896,7 @@ def page_ai_content_detection():
     st.info("Diese Seite ist noch nicht vollständig implementiert.")
 
 # ------------------------------------------------------------------
-# Sidebar Navigation & Chatbot (ERWEITERT mit neuen Modulen)
+# Sidebar Navigation & Chatbot (ERWEITERT mit E-Mail-Button)
 # ------------------------------------------------------------------
 def sidebar_module_navigation():
     st.sidebar.title("Module Navigation")
@@ -1401,11 +905,13 @@ def sidebar_module_navigation():
     st.sidebar.subheader("🔧 Tool Status")
     st.sidebar.write(f"🦛 Chonkie: {'✅' if CHONKIE_AVAILABLE else '❌'}")
     st.sidebar.write(f"🏷️ Label Studio: {'✅' if LABELSTUDIO_AVAILABLE else '❌'}")
+    st.sidebar.write(f"📧 E-Mail: {'✅' if EMAIL_AVAILABLE else '❌'}")
 
     pages = {
         "Home": page_home,
-        "🦛 Chonkie": module_chonkie_search,  # ✅ NEUES MODUL
-        "🖼️ Abbildungen": module_scientific_images,  # ✅ NEUES MODUL
+        "🦛 Chonkie": module_chonkie_search,
+        "🖼️ Abbildungen": module_scientific_images,
+        "📧 Benachrichtigungen": module_email_notifications,  # ✅ NEUER BUTTON
         "Online-API_Filter": page_online_api_filter,
         "3) Codewords & PubMed": page_codewords_pubmed,
         "Analyze Paper": page_analyze_paper,
@@ -1471,6 +977,8 @@ def main():
             st.caption("🦛 Chonkie verfügbar")
         if LABELSTUDIO_AVAILABLE:
             st.caption("🏷️ Label Studio verfügbar")
+        if EMAIL_AVAILABLE:
+            st.caption("📧 E-Mail verfügbar")
         
         if "chat_history" not in st.session_state:
             st.session_state["chat_history"] = []
