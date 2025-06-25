@@ -25,51 +25,33 @@ import openpyxl
 # Neuer Import für die Übersetzung mit google_trans_new
 from google_trans_new import google_translator
 
-# ✅ CHONKIE INTEGRATION - Neue Imports
+# ✅ NEUE MODULE IMPORTS
 try:
-    from chonkie import TokenChunker, SemanticChunker, SentenceChunker
-    CHONKIE_AVAILABLE = True
-    print("✅ Chonkie erfolgreich importiert")
+    from modules.chonkie_scientific_analysis import module_chonkie_search
+    CHONKIE_MODULE_AVAILABLE = True
 except ImportError:
-    CHONKIE_AVAILABLE = False
-    print("⚠️ Chonkie nicht verfügbar - installiere mit: pip install chonkie")
-    # Fallback-Chunker
-    class FallbackChunker:
-        def __init__(self, chunk_size=1000, chunk_overlap=100):
-            self.chunk_size = chunk_size
-            self.chunk_overlap = chunk_overlap
-        
-        def chunk(self, text):
-            """Einfacher Fallback-Chunker"""
-            words = text.split()
-            chunks = []
-            for i in range(0, len(words), self.chunk_size - self.chunk_overlap):
-                chunk_words = words[i:i + self.chunk_size]
-                chunk_text = ' '.join(chunk_words)
-                chunks.append(type('Chunk', (), {'text': chunk_text})())
-            return chunks
-    
-    TokenChunker = SentenceChunker = SemanticChunker = FallbackChunker
+    CHONKIE_MODULE_AVAILABLE = False
+    def module_chonkie_search():
+        st.error("Chonkie-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/chonkie_scientific_analysis.py")
 
-# ✅ LABEL STUDIO INTEGRATION - Neue Imports
 try:
-    import label_studio_sdk
-    LABELSTUDIO_AVAILABLE = True
-    print("✅ Label Studio SDK erfolgreich importiert")
+    from modules.labelstudio_scientific_images import module_scientific_images
+    LABELSTUDIO_MODULE_AVAILABLE = True
 except ImportError:
-    LABELSTUDIO_AVAILABLE = False
-    print("⚠️ Label Studio SDK nicht verfügbar - installiere mit: pip install label-studio-sdk")
+    LABELSTUDIO_MODULE_AVAILABLE = False
+    def module_scientific_images():
+        st.error("Label Studio-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/labelstudio_scientific_images.py")
 
-# ✅ EMAIL NOTIFICATIONS - Neue Imports
 try:
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    EMAIL_AVAILABLE = True
-    print("✅ E-Mail-Module verfügbar")
+    from modules.email_notifications import module_email_notifications
+    EMAIL_MODULE_AVAILABLE = True
 except ImportError:
-    EMAIL_AVAILABLE = False
-    print("⚠️ E-Mail-Module nicht verfügbar")
+    EMAIL_MODULE_AVAILABLE = False
+    def module_email_notifications():
+        st.error("E-Mail-Benachrichtigungs-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/email_notifications.py")
 
 # ------------------------------------------------------------------
 # Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
@@ -481,12 +463,17 @@ def module_paperqa2():
 def page_home():
     st.title("Welcome to the Main Menu")
     st.write("Choose a module in the sidebar to proceed.")
-    st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
+    if os.path.exists("Bild1.jpg"):
+        st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
 
 def page_codewords_pubmed():
     st.title("Codewords & PubMed Settings")
-    from modules.codewords_pubmed import module_codewords_pubmed
-    module_codewords_pubmed()
+    try:
+        from modules.codewords_pubmed import module_codewords_pubmed
+        module_codewords_pubmed()
+    except ImportError:
+        st.error("Module nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/codewords_pubmed.py")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
@@ -521,301 +508,14 @@ def page_excel_online_search():
 def page_online_api_filter():
     st.title("Online-API_Filter (Combined)")
     st.write("Here, you can combine API selection and filtering in one step.")
-    from modules.online_api_filter import module_online_api_filter
-    module_online_api_filter()
+    try:
+        from modules.online_api_filter import module_online_api_filter
+        module_online_api_filter()
+    except ImportError:
+        st.error("Module nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/online_api_filter.py")
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
-
-# ------------------------------------------------------------------
-# ✅ MODUL 1: CHONKIE - Import aus modules
-# ------------------------------------------------------------------
-try:
-    from modules.chonkie_scientific_analysis import module_chonkie_search
-    CHONKIE_MODULE_AVAILABLE = True
-except ImportError:
-    CHONKIE_MODULE_AVAILABLE = False
-    def module_chonkie_search():
-        st.error("Chonkie-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/chonkie_scientific_analysis.py")
-
-# ------------------------------------------------------------------
-# ✅ MODUL 2: SCIENTIFIC IMAGES - Import aus modules
-# ------------------------------------------------------------------
-try:
-    from modules.labelstudio_scientific_images import module_scientific_images
-    LABELSTUDIO_MODULE_AVAILABLE = True
-except ImportError:
-    LABELSTUDIO_MODULE_AVAILABLE = False
-    def module_scientific_images():
-        st.error("Label Studio-Modul nicht gefunden!")
-        st.info("Bitte erstelle die Datei /modules/labelstudio_scientific_images.py")
-
-# ------------------------------------------------------------------
-# ✅ MODUL 3: EMAIL NOTIFICATIONS - Import aus modules
-# ------------------------------------------------------------------
-try:
-    from modules.email_notifications import module_email_notifications
-    EMAIL_MODULE_AVAILABLE = True
-except ImportError:
-    EMAIL_MODULE_AVAILABLE = False
-    def module_email_notifications():
-        st.title("📧 E-Mail-Benachrichtigungen für neue Papers")
-        
-        if not EMAIL_AVAILABLE:
-            st.error("E-Mail-Module nicht verfügbar!")
-            st.info("Installiere missing dependencies: smtplib ist normalerweise verfügbar")
-            return
-        
-        st.success("✅ E-Mail-Benachrichtigungen verfügbar!")
-        
-        # Tab-Interface
-        tab1, tab2, tab3, tab4 = st.tabs(["⚙️ Setup", "🔍 Suchen", "📧 Senden", "📊 Status"])
-        
-        with tab1:
-            st.header("E-Mail Server Konfiguration")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                smtp_server = st.text_input("SMTP Server:", value="smtp.gmail.com")
-                smtp_port = st.number_input("SMTP Port:", value=587, min_value=1, max_value=65535)
-            
-            with col2:
-                sender_email = st.text_input("Absender E-Mail:")
-                sender_password = st.text_input("E-Mail Passwort:", type="password")
-            
-            use_tls = st.checkbox("TLS verwenden", value=True)
-            
-            if st.button("🔧 E-Mail-Konfiguration speichern"):
-                st.session_state["email_config"] = {
-                    "smtp_server": smtp_server,
-                    "smtp_port": smtp_port,
-                    "email": sender_email,
-                    "password": sender_password,
-                    "use_tls": use_tls
-                }
-                st.success("✅ E-Mail-Konfiguration gespeichert!")
-            
-            st.subheader("📋 Such-Alerts konfigurieren")
-            
-            alert_name = st.text_input("Alert-Name:")
-            keywords = st.text_input("Suchbegriffe:")
-            recipient_emails = st.text_area("Empfänger E-Mails (eine pro Zeile):")
-            
-            databases = st.multiselect("Datenbanken:", ["PubMed", "Europe PMC", "Semantic Scholar"])
-            frequency = st.selectbox("Häufigkeit:", ["Täglich", "Wöchentlich", "Monatlich"])
-            
-            if st.button("➕ Alert hinzufügen"):
-                if "alerts" not in st.session_state:
-                    st.session_state["alerts"] = []
-                
-                new_alert = {
-                    "name": alert_name,
-                    "keywords": keywords,
-                    "recipients": recipient_emails.split('\n'),
-                    "databases": databases,
-                    "frequency": frequency,
-                    "created": datetime.datetime.now().isoformat(),
-                    "active": True
-                }
-                
-                st.session_state["alerts"].append(new_alert)
-                st.success(f"✅ Alert '{alert_name}' hinzugefügt!")
-        
-        with tab2:
-            st.header("🔍 Manuelle Suche & Benachrichtigung")
-            
-            search_keywords = st.text_input("Suchbegriffe für einmalige Suche:")
-            search_databases = st.multiselect("Datenbanken:", ["PubMed", "Europe PMC", "Semantic Scholar"], default=["PubMed"])
-            days_back = st.slider("Tage zurück:", 1, 30, 7)
-            
-            if st.button("🔍 Suche starten"):
-                if not search_keywords:
-                    st.warning("Bitte Suchbegriffe eingeben!")
-                    return
-                
-                all_papers = []
-                
-                with st.spinner("Suche nach neuen Papers..."):
-                    if "PubMed" in search_databases:
-                        pubmed_results = search_pubmed_simple(search_keywords)
-                        for result in pubmed_results:
-                            result["Source"] = "PubMed"
-                            if result.get("PMID") != "n/a":
-                                result["Abstract"] = fetch_pubmed_abstract(result["PMID"])
-                        all_papers.extend(pubmed_results)
-                    
-                    if "Europe PMC" in search_databases:
-                        pmc_results = search_europe_pmc_simple(search_keywords)
-                        all_papers.extend(pmc_results)
-                    
-                    if "Semantic Scholar" in search_databases:
-                        scholar_search = SemanticScholarSearch()
-                        scholar_search.search_semantic_scholar(search_keywords)
-                        all_papers.extend(scholar_search.all_results)
-                
-                st.session_state["found_papers"] = all_papers
-                st.success(f"✅ {len(all_papers)} Papers gefunden!")
-                
-                # Zeige Ergebnisse
-                if all_papers:
-                    for i, paper in enumerate(all_papers[:5]):
-                        with st.expander(f"Paper {i+1}: {paper.get('Title', 'Unbekannt')}"):
-                            st.write(f"**Quelle:** {paper.get('Source', 'N/A')}")
-                            st.write(f"**Jahr:** {paper.get('Year', 'N/A')}")
-                            st.write(f"**Journal:** {paper.get('Journal', 'N/A')}")
-                            if paper.get('Abstract'):
-                                st.write(f"**Abstract:** {paper['Abstract'][:300]}...")
-        
-        with tab3:
-            st.header("📧 E-Mail versenden")
-            
-            if "found_papers" not in st.session_state:
-                st.info("Führe erst eine Suche durch!")
-                return
-            
-            if "email_config" not in st.session_state:
-                st.warning("Bitte erst E-Mail-Konfiguration speichern!")
-                return
-            
-            papers = st.session_state["found_papers"]
-            
-            if not papers:
-                st.info("Keine Papers zum Versenden gefunden.")
-                return
-            
-            st.write(f"**Gefundene Papers:** {len(papers)}")
-            
-            recipient_email = st.text_input("Empfänger E-Mail:")
-            email_subject = st.text_input("Betreff:", value=f"Neue wissenschaftliche Papers - {len(papers)} gefunden")
-            
-            include_abstracts = st.checkbox("Abstracts einschließen", value=True)
-            max_papers = st.slider("Max. Papers pro E-Mail:", 1, 20, 10)
-            
-            # E-Mail Vorschau
-            st.subheader("📄 E-Mail Vorschau")
-            
-            email_body = f"""
-📚 Neue wissenschaftliche Papers gefunden
-{'='*50}
-
-Anzahl gefundener Papers: {len(papers)}
-Datum: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
-
-📄 Paper-Details:
-{'-'*30}
-"""
-            
-            for i, paper in enumerate(papers[:max_papers], 1):
-                email_body += f"""
-{i}. {paper.get('Title', 'Unbekannt')}
-   📖 Journal: {paper.get('Journal', 'N/A')}
-   📅 Jahr: {paper.get('Year', 'N/A')}
-   🏷️ Quelle: {paper.get('Source', 'N/A')}
-"""
-                if include_abstracts and paper.get('Abstract'):
-                    abstract = paper['Abstract'][:300] + "..." if len(paper['Abstract']) > 300 else paper['Abstract']
-                    email_body += f"   📋 Abstract: {abstract}\n"
-                email_body += "\n"
-            
-            email_body += """
-{'='*50}
-Diese Benachrichtigung wurde automatisch generiert.
-
-Powered by Streamlit Scientific Paper Notification System
-"""
-            
-            with st.expander("E-Mail Inhalt anzeigen"):
-                st.code(email_body)
-            
-            if st.button("📧 E-Mail senden"):
-                config = st.session_state["email_config"]
-                
-                try:
-                    # SMTP-Verbindung
-                    server = smtplib.SMTP(config['smtp_server'], config['smtp_port'])
-                    
-                    if config.get('use_tls', True):
-                        server.starttls()
-                    
-                    server.login(config['email'], config['password'])
-                    
-                    # E-Mail erstellen
-                    msg = MIMEMultipart()
-                    msg['From'] = config['email']
-                    msg['To'] = recipient_email
-                    msg['Subject'] = email_subject
-                    
-                    # Body hinzufügen
-                    msg.attach(MIMEText(email_body, 'plain', 'utf-8'))
-                    
-                    # E-Mail senden
-                    text = msg.as_string()
-                    server.sendmail(config['email'], [recipient_email], text)
-                    server.quit()
-                    
-                    st.success(f"✅ E-Mail erfolgreich an {recipient_email} gesendet!")
-                    
-                except Exception as e:
-                    st.error(f"❌ E-Mail-Versand fehlgeschlagen: {e}")
-        
-        with tab4:
-            st.header("📊 Alert Status & Verwaltung")
-            
-            if "alerts" not in st.session_state or not st.session_state["alerts"]:
-                st.info("Keine Alerts konfiguriert.")
-                return
-            
-            st.subheader("🔔 Aktive Alerts")
-            
-            alerts = st.session_state["alerts"]
-            
-            for i, alert in enumerate(alerts):
-                with st.expander(f"Alert: {alert['name']} ({'✅ Aktiv' if alert['active'] else '❌ Inaktiv'})"):
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write(f"**Keywords:** {alert['keywords']}")
-                        st.write(f"**Datenbanken:** {', '.join(alert['databases'])}")
-                        st.write(f"**Häufigkeit:** {alert['frequency']}")
-                    
-                    with col2:
-                        st.write(f"**Empfänger:** {len(alert['recipients'])}")
-                        st.write(f"**Erstellt:** {alert['created'][:10]}")
-                        st.write(f"**Status:** {'Aktiv' if alert['active'] else 'Inaktiv'}")
-                    
-                    # Alert-Steuerung
-                    col_a, col_b, col_c = st.columns(3)
-                    
-                    with col_a:
-                        if st.button(f"▶️ Test", key=f"test_{i}"):
-                            st.info(f"Test-Suche für '{alert['name']}' würde hier durchgeführt")
-                    
-                    with col_b:
-                        if alert['active']:
-                            if st.button(f"⏸️ Pausieren", key=f"pause_{i}"):
-                                st.session_state["alerts"][i]['active'] = False
-                                st.rerun()
-                        else:
-                            if st.button(f"▶️ Aktivieren", key=f"activate_{i}"):
-                                st.session_state["alerts"][i]['active'] = True
-                                st.rerun()
-                    
-                    with col_c:
-                        if st.button(f"🗑️ Löschen", key=f"delete_{i}"):
-                            st.session_state["alerts"].pop(i)
-                            st.rerun()
-            
-            # Zusammenfassung
-            st.subheader("📈 Zusammenfassung")
-            active_alerts = sum(1 for alert in alerts if alert['active'])
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Gesamt Alerts", len(alerts))
-            with col2:
-                st.metric("Aktive Alerts", active_alerts)
-            with col3:
-                st.metric("Inaktive Alerts", len(alerts) - active_alerts)
 
 # ------------------------------------------------------------------
 # Important Classes for Analysis
@@ -976,10 +676,6 @@ def parse_cohort_info(summary_text: str) -> dict:
     if m_orig:
         info["origin"] = m_orig.group(1).strip()
     return info
-
-# ------------------------------------------------------------------
-# (Bereits vorhanden) fetch_pubmed_doi_and_link
-# ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
 # Function for ChatGPT-based scoring search
@@ -1782,6 +1478,8 @@ Only output this JSON, no further explanation:
                     ws["J2"].value = datetime.datetime.now().strftime("%Y-%m-%d")
 
                     # Fill gene / rsNumber
+                    ws["D5"].value = gene_via_text if
+                    # Fill gene / rsNumber
                     ws["D5"].value = gene_via_text if gene_via_text else ""
                     ws["D6"].value = rs_num if rs_num else ""
                     
@@ -1799,8 +1497,8 @@ Only output this JSON, no further explanation:
                             else:
                                 ws[f"E{row_i}"].value = "No rsID => no genotype frequency"
                         else:
-                            ws[f"D{row_i}"] = ""
-                            ws[f"E{row_i}"] = ""
+                            ws[f"D{row_i}"].value = ""
+                            ws[f"E{row_i}"].value = ""
 
                     # Publication year, cohort, key findings
                     ws["C20"].value = year_for_excel
@@ -1844,127 +1542,157 @@ Only output this JSON, no further explanation:
     if st.button("Perform Scoring now"):
         if "search_results" in st.session_state and st.session_state["search_results"]:
             codewords_str = st.session_state.get("codewords", "")
-        selected_genes = st.session_state.get("selected_genes", [])
-        scored_list = chatgpt_online_search_with_genes(
-            papers=st.session_state["search_results"],
-            codewords=codewords_str,
-            genes=selected_genes,
-            top_k=200
-        )
-        st.session_state["scored_list"] = scored_list
-        st.success("Scored papers saved to st.session_state['scored_list']!")
-    else:
-        st.info("No (previous) search results found, so no scoring possible.")
-
-if "scored_list" not in st.session_state or not st.session_state["scored_list"]:
-    st.info("No scored papers yet. Please click 'Perform Scoring now' first.")
-    return
-
-st.subheader("Single Analysis of the ChatGPT-Scored Papers")
-scored_titles = [paper["Title"] for paper in st.session_state["scored_list"]]
-chosen_title = st.selectbox(
-    "Select a paper from the scoring list:",
-    options=["(Please choose)"] + scored_titles
-)
-
-analysis_choice_for_scored_paper = st.selectbox(
-    "Which analysis do you want to perform?",
-    ["(No selection)", "Zusammenfassung", "Wichtigste Erkenntnisse", "Methoden & Techniken", "Relevanz-Bewertung"]
-)
-
-if chosen_title != "(Please choose)":
-    selected_paper = next((p for p in st.session_state["scored_list"] if p["Title"] == chosen_title), None)
-    if selected_paper:
-        st.write("**Title:** ", selected_paper.get("Title", "n/a"))
-        st.write("**Source:** ", selected_paper.get("Source", "n/a"))
-        st.write("**PubMed ID:** ", selected_paper.get("PubMed ID", "n/a"))
-        st.write("**Year:** ", selected_paper.get("Year", "n/a"))
-        st.write("**Publisher:** ", selected_paper.get("Publisher", "n/a"))
-        st.write("**Abstract:**")
-        abstract = selected_paper.get("Abstract") or ""
-        if abstract.strip():
-            st.markdown(f"> {abstract}")
+            selected_genes = st.session_state.get("selected_genes", [])
+            scored_list = chatgpt_online_search_with_genes(
+                papers=st.session_state["search_results"],
+                codewords=codewords_str,
+                genes=selected_genes,
+                top_k=200
+            )
+            st.session_state["scored_list"] = scored_list
+            st.success("Scored papers saved to st.session_state['scored_list']!")
         else:
-            st.warning(f"No abstract for {selected_paper.get('Title', 'Unnamed')}.")
-        
-        if st.button("Perform Analysis for this Paper"):
-            if not abstract.strip():
-                st.error("No abstract present, cannot analyze.")
-                return
-            if analysis_choice_for_scored_paper == "Zusammenfassung":
-                res = analyzer.summarize(abstract, api_key)
-            elif analysis_choice_for_scored_paper == "Wichtigste Erkenntnisse":
-                res = analyzer.extract_key_findings(abstract, api_key)
-            elif analysis_choice_for_scored_paper == "Methoden & Techniken":
-                res = analyzer.identify_methods(abstract, api_key)
-            elif analysis_choice_for_scored_paper == "Relevanz-Bewertung":
-                if not topic:
-                    st.error("Please enter a topic in the sidebar.")
-                    return
-                res = analyzer.evaluate_relevance(abstract, topic, api_key)
-            else:
-                st.info("No valid analysis choice selected.")
-                return
-
-            if res and output_lang != "Deutsch" and analysis_choice_for_scored_paper != "(No selection)":
-                lang_map = {
-                    "Englisch": "English",
-                    "Portugiesisch": "Portuguese",
-                    "Serbisch": "Serbian"
-                }
-                target_lang = lang_map.get(output_lang, "English")
-                res = translate_text_openai(res, "German", target_lang, api_key)
-            
-            st.write("### Analysis Result:")
-            st.write(res)
-    else:
-        st.warning("Paper not found (unexpected error).")
-
-st.write("---")
-st.header("PaperQA Multi-Paper Analyzer: Commonalities & Contradictions (Scored Papers)")
-if st.button("Perform Analysis (Scored Papers)"):
-    if "scored_list" in st.session_state and st.session_state["scored_list"]:
-        paper_texts = {}
-        for paper in st.session_state["scored_list"]:
-            title = paper.get("Title", "Unnamed")
-            abstract = paper.get("Abstract") or ""
+            st.info("No (previous) search results found, so no scoring possible.")
+    
+    if "scored_list" not in st.session_state or not st.session_state["scored_list"]:
+        st.info("No scored papers yet. Please click 'Perform Scoring now' first.")
+        return
+    
+    st.subheader("Single Analysis of the ChatGPT-Scored Papers")
+    scored_titles = [paper["Title"] for paper in st.session_state["scored_list"]]
+    chosen_title = st.selectbox(
+        "Select a paper from the scoring list:",
+        options=["(Please choose)"] + scored_titles
+    )
+    
+    analysis_choice_for_scored_paper = st.selectbox(
+        "Which analysis do you want to perform?",
+        ["(No selection)", "Zusammenfassung", "Wichtigste Erkenntnisse", "Methoden & Techniken", "Relevanz-Bewertung"]
+    )
+    
+    if chosen_title != "(Please choose)":
+        selected_paper = next((p for p in st.session_state["scored_list"] if p["Title"] == chosen_title), None)
+        if selected_paper:
+            st.write("**Title:** ", selected_paper.get("Title", "n/a"))
+            st.write("**Source:** ", selected_paper.get("Source", "n/a"))
+            st.write("**PubMed ID:** ", selected_paper.get("PubMed ID", "n/a"))
+            st.write("**Year:** ", selected_paper.get("Year", "n/a"))
+            st.write("**Publisher:** ", selected_paper.get("Publisher", "n/a"))
+            st.write("**Abstract:**")
+            abstract = selected_paper.get("Abstract") or ""
             if abstract.strip():
-                paper_texts[title] = abstract
+                st.markdown(f"> {abstract}")
             else:
-                st.warning(f"No abstract for {title}.")
-        if not paper_texts:
-            st.error("No texts for the analysis.")
+                st.warning(f"No abstract for {selected_paper.get('Title', 'Unnamed')}.")
+            
+            if st.button("Perform Analysis for this Paper"):
+                if not abstract.strip():
+                    st.error("No abstract present, cannot analyze.")
+                    return
+                if analysis_choice_for_scored_paper == "Zusammenfassung":
+                    res = analyzer.summarize(abstract, api_key)
+                elif analysis_choice_for_scored_paper == "Wichtigste Erkenntnisse":
+                    res = analyzer.extract_key_findings(abstract, api_key)
+                elif analysis_choice_for_scored_paper == "Methoden & Techniken":
+                    res = analyzer.identify_methods(abstract, api_key)
+                elif analysis_choice_for_scored_paper == "Relevanz-Bewertung":
+                    if not topic:
+                        st.error("Please enter a topic in the sidebar.")
+                        return
+                    res = analyzer.evaluate_relevance(abstract, topic, api_key)
+                else:
+                    st.info("No valid analysis choice selected.")
+                    return
+
+                if res and output_lang != "Deutsch" and analysis_choice_for_scored_paper != "(No selection)":
+                    lang_map = {
+                        "Englisch": "English",
+                        "Portugiesisch": "Portuguese",
+                        "Serbisch": "Serbian"
+                    }
+                    target_lang = lang_map.get(output_lang, "English")
+                    res = translate_text_openai(res, "German", target_lang, api_key)
+                
+                st.write("### Analysis Result:")
+                st.write(res)
         else:
-            with st.spinner("Analyzing scored papers for commonalities & contradictions..."):
-                result_json_str = analyze_papers_for_commonalities_and_contradictions(
-                    paper_texts,
-                    api_key,
-                    model,
-                    method_choice="ContraCrow" if analysis_method == "ContraCrow" else "Standard"
-                )
-                st.subheader("Result (JSON)")
-                st.code(result_json_str, language="json")
-                try:
-                    data_js = json.loads(result_json_str)
-                    common = data_js.get("commonalities", [])
-                    contras = data_js.get("contradictions", [])
-                    st.write("## Commonalities")
-                    if common:
-                        for c in common:
-                            st.write(f"- {c}")
-                    else:
-                        st.info("No commonalities found.")
-                    st.write("## Contradictions")
-                    if contras:
-                        for i, cobj in enumerate(contras, start=1):
-                            st.write(f"Contradiction {i}:")
-                            st.write(f"- **Paper A**: {cobj.get('paperA')} => {cobj.get('claimA')}")
-                            st.write(f"- **Paper B**: {cobj.get('paperB')} => {cobj.get('claimB')}")
-                            st.write(f"  Reason: {cobj.get('reason','(none)')}")
-                    else:
-                        st.info("No contradictions found.")
-                except Exception as e:
-                    st.warning("GPT output could not be parsed as valid JSON.")
+            st.warning("Paper not found (unexpected error).")
+
+    st.write("---")
+    st.header("PaperQA Multi-Paper Analyzer: Commonalities & Contradictions (Scored Papers)")
+    if st.button("Perform Analysis (Scored Papers)"):
+        if "scored_list" in st.session_state and st.session_state["scored_list"]:
+            paper_texts = {}
+            for paper in st.session_state["scored_list"]:
+                title = paper.get("Title", "Unnamed")
+                abstract = paper.get("Abstract") or ""
+                if abstract.strip():
+                    paper_texts[title] = abstract
+                else:
+                    st.warning(f"No abstract for {title}.")
+            if not paper_texts:
+                st.error("No texts for the analysis.")
+            else:
+                with st.spinner("Analyzing scored papers for commonalities & contradictions..."):
+                    result_json_str = analyze_papers_for_commonalities_and_contradictions(
+                        paper_texts,
+                        api_key,
+                        model,
+                        method_choice="ContraCrow" if analysis_method == "ContraCrow" else "Standard"
+                    )
+                    st.subheader("Result (JSON)")
+                    st.code(result_json_str, language="json")
+                    try:
+                        data_js = json.loads(result_json_str)
+                        common = data_js.get("commonalities", [])
+                        contras = data_js.get("contradictions", [])
+                        st.write("## Commonalities")
+                        if common:
+                            for c in common:
+                                st.write(f"- {c}")
+                        else:
+                            st.info("No commonalities found.")
+                        st.write("## Contradictions")
+                        if contras:
+                            for i, cobj in enumerate(contras, start=1):
+                                st.write(f"Contradiction {i}:")
+                                st.write(f"- **Paper A**: {cobj.get('paperA')} => {cobj.get('claimA')}")
+                                st.write(f"- **Paper B**: {cobj.get('paperB')} => {cobj.get('claimB')}")
+                                st.write(f"  Reason: {cobj.get('reason','(none)')}")
+                        else:
+                            st.info("No contradictions found.")
+                    except Exception as e:
+                        st.warning("GPT output could not be parsed as valid JSON.")
+
+# ------------------------------------------------------------------
+# ✅ NEUE MODULE IMPORTS - Hinzugefügte Module
+# ------------------------------------------------------------------
+try:
+    from modules.chonkie_scientific_analysis import module_chonkie_search
+    CHONKIE_MODULE_AVAILABLE = True
+except ImportError:
+    CHONKIE_MODULE_AVAILABLE = False
+    def module_chonkie_search():
+        st.error("🦛 Chonkie-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/chonkie_scientific_analysis.py")
+
+try:
+    from modules.labelstudio_scientific_images import module_scientific_images
+    LABELSTUDIO_MODULE_AVAILABLE = True
+except ImportError:
+    LABELSTUDIO_MODULE_AVAILABLE = False
+    def module_scientific_images():
+        st.error("🖼️ Label Studio-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/labelstudio_scientific_images.py")
+
+try:
+    from modules.email_notifications import module_email_notifications
+    EMAIL_MODULE_AVAILABLE = True
+except ImportError:
+    EMAIL_MODULE_AVAILABLE = False
+    def module_email_notifications():
+        st.error("📧 E-Mail-Benachrichtigungs-Modul nicht gefunden!")
+        st.info("Bitte erstelle die Datei /modules/email_notifications.py")
 
 # ------------------------------------------------------------------
 # NEUE KLASSE & FUNKTION FÜR KI-INHALTSERKENNUNG (AIContentDetector)
@@ -1982,19 +1710,16 @@ class AIContentDetector:
     
     def analyze_patterns(self, text):
         """Untersucht typische KI-Schreibmuster"""
-        # Einige einfache Heuristiken/Regex
         patterns = {
-            "wiederholende_phrasen": r'(\b\w+\s+\w+\b)(?=.*\1)',  # Beispiel: wiederholte Wortgruppen
-            "gleichmäßiger_ton": r'(jedoch|allerdings|dennoch|daher|folglich|somit)',  # Signalwörter
+            "wiederholende_phrasen": r'(\b\w+\s+\w+\b)(?=.*\1)',
+            "gleichmäßiger_ton": r'(jedoch|allerdings|dennoch|daher|folglich|somit)',
             "generische_übergänge": r'\b(zunächst|anschließend|abschließend|zusammenfassend)\b'
         }
         
         scores = {}
         for name, pattern in patterns.items():
             matches = re.findall(pattern, text, re.IGNORECASE)
-            # Frequenz pro 100 Wörter
             density = len(matches) / (len(text.split()) / 100 + 1e-8)
-            # Eine einfache Skalierung  (kein echter wissenschaftl. Ansatz)
             scores[name] = min(100, density * 5)
         
         return sum(scores.values()) / len(scores) if scores else 0
@@ -2003,9 +1728,8 @@ class AIContentDetector:
         """Prüft auf konsistente Schreibweise und Ton"""
         paragraphs = text.split('\n\n')
         if len(paragraphs) < 3:
-            return 50  # Zu wenig Text für eine sinnvolle Analyse
+            return 50
         
-        # Satzlängenvariation
         sentences = re.split(r'[.!?]+', text)
         lengths = [len(s.split()) for s in sentences if s.strip()]
         if not lengths:
@@ -2013,20 +1737,17 @@ class AIContentDetector:
         
         avg_length = sum(lengths) / len(lengths)
         variation = sum(abs(l - avg_length) for l in lengths) / len(lengths)
-        
-        # Niedrige Variation => KI-typisch (Heuristik)
         consistency_score = 100 - min(100, variation * 10)
         return consistency_score
     
     def verify_citations(self, text):
-        """Überprüft Zitate auf Plausibilität (sehr einfach)"""
+        """Überprüft Zitate auf Plausibilität"""
         citation_pattern = r'\(([^)]+\d{4}[^)]*)\)'
         citations = re.findall(citation_pattern, text)
         
         if not citations:
-            return 60  # Keine Zitate gefunden => neutraler Wert
+            return 60
         
-        # Einfache Heuristik: sind viele Zitate im gleichen Format?
         formats = {}
         for citation in citations:
             format_key = re.sub(r'[A-Za-z\s]', 'X', citation)
@@ -2037,11 +1758,10 @@ class AIContentDetector:
         return uniformity
     
     def detect_with_api(self, text):
-        """Verwendet externe APIs (Originality.ai oder Scribbr)"""
+        """Verwendet externe APIs"""
         if not self.api_key:
-            return 50  # Keine API => Mittelwert
+            return 50
         
-        # Originality.ai
         if self.api_provider == "originality":
             try:
                 response = requests.post(
@@ -2051,27 +1771,10 @@ class AIContentDetector:
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    # 'score.ai' => 0-1
                     return result.get("score", {}).get("ai", 0.5) * 100
             except Exception as e:
                 print(f"Originality.ai API-Fehler: {e}")
         
-        # Scribbr (Beispiel, es gibt keine offizielle Public-API-Doku)
-        elif self.api_provider == "scribbr":
-            try:
-                response = requests.post(
-                    "https://api.scribbr.com/v1/ai-detection",  # fiktiver Endpunkt
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={"text": text}
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    # Annahme: "ai_probability" => 0-100
-                    return result.get("ai_probability", 50)
-            except Exception as e:
-                print(f"Scribbr API-Fehler: {e}")
-        
-        # Fallback
         return 50
     
     def analyze_text(self, text):
@@ -2080,7 +1783,6 @@ class AIContentDetector:
         for method_name, method_func in self.detection_methods.items():
             scores[method_name] = method_func(text)
         
-        # Gewichtung
         weights = {
             "pattern_analysis": 0.20,
             "consistency_check": 0.20,
@@ -2115,11 +1817,9 @@ def page_ai_content_detection():
     
     st.info("Hier kannst du Text eingeben oder eine Datei hochladen, um eine KI-Analyse durchzuführen.")
     
-    # API-Infos für Originality oder Scribbr
     api_key_input = st.text_input("API Key (optional)", value="", type="password")
     provider_option = st.selectbox("API-Anbieter", ["Kein API-Einsatz", "originality", "scribbr"], index=0)
     
-    # Eingabemethode
     input_mode = st.radio("Eingabemethode für den Text:", ["Direkte Eingabe", "Textdatei hochladen"])
     
     text_data = ""
@@ -2139,7 +1839,6 @@ def page_ai_content_detection():
             st.warning("Bitte Text eingeben oder Datei hochladen.")
             return
         
-        # Detector instanziieren
         if provider_option == "Kein API-Einsatz":
             detector = AIContentDetector(api_key=None, api_provider=None)
         else:
@@ -2169,9 +1868,7 @@ def page_ai_content_detection():
 # Seite: Genotype Frequency Finder
 # ------------------------------------------------------------------
 def page_genotype_finder():
-    """
-    A separate page to look up genotype frequencies via Ensembl for a user-provided rsID & genotype.
-    """
+    """A separate page to look up genotype frequencies via Ensembl for a user-provided rsID & genotype."""
     st.title("Genotype Frequency Finder")
 
     class GenotypeFinder:
@@ -2247,22 +1944,16 @@ def page_genotype_finder():
         st.write(freq_text)
 
 # ------------------------------------------------------------------
-# Sidebar Navigation & Chatbot (ERWEITERT mit allen Buttons)
+# ✅ ERWEITERTE Sidebar Navigation mit NEUEN BUTTONS
 # ------------------------------------------------------------------
 def sidebar_module_navigation():
     st.sidebar.title("Module Navigation")
-    
-    # Status-Anzeige für verfügbare Tools
-    st.sidebar.subheader("🔧 Tool Status")
-    st.sidebar.write(f"🦛 Chonkie: {'✅' if CHONKIE_AVAILABLE else '❌'}")
-    st.sidebar.write(f"🏷️ Label Studio: {'✅' if LABELSTUDIO_AVAILABLE else '❌'}")
-    st.sidebar.write(f"📧 E-Mail: {'✅' if EMAIL_AVAILABLE else '❌'}")
 
     pages = {
         "Home": page_home,
-        "🦛 Chonkie": module_chonkie_search,
-        "🖼️ Abbildungen": module_scientific_images,
-        "📧 Benachrichtigungen": module_email_notifications,
+        "🦛 Chonkie": module_chonkie_search,  # ✅ NEUER BUTTON
+        "🖼️ Abbildungen": module_scientific_images,  # ✅ NEUER BUTTON
+        "📧 Benachrichtigungen": module_email_notifications,  # ✅ NEUER BUTTON
         "Online-API_Filter": page_online_api_filter,
         "3) Codewords & PubMed": page_codewords_pubmed,
         "Analyze Paper": page_analyze_paper,
@@ -2282,10 +1973,8 @@ def answer_chat(question: str) -> str:
     """Simple example: uses Paper text (if available) from st.session_state + GPT."""
     api_key = st.session_state.get("api_key", "")
     paper_text = st.session_state.get("paper_text", "")
-    
     if not api_key:
         return f"(No API-Key) Echo: {question}"
-    
     if not paper_text.strip():
         sys_msg = "You are a helpful assistant for general questions."
     else:
@@ -2294,7 +1983,6 @@ def answer_chat(question: str) -> str:
             + paper_text[:12000] + "\n\n"
             "Please use it to answer questions as expertly as possible."
         )
-    
     openai.api_key = api_key
     try:
         response = openai.ChatCompletion.create(
@@ -2322,27 +2010,15 @@ def main():
     
     with col_right:
         st.subheader("🤖 Chatbot")
-        
-        # Tool-Status im Chatbot
-        if CHONKIE_AVAILABLE:
-            st.caption("🦛 Chonkie verfügbar")
-        if LABELSTUDIO_AVAILABLE:
-            st.caption("🏷️ Label Studio verfügbar")
-        if EMAIL_AVAILABLE:
-            st.caption("📧 E-Mail verfügbar")
-        
         if "chat_history" not in st.session_state:
             st.session_state["chat_history"] = []
-        
         user_input = st.text_input("Your question here", key="chatbot_right_input")
-        
         if st.button("Send (Chat)", key="chatbot_right_send"):
             if user_input.strip():
                 st.session_state["chat_history"].append(("user", user_input))
                 bot_answer = answer_chat(user_input)
                 st.session_state["chat_history"].append(("bot", bot_answer))
         
-        # Chat-Display
         st.markdown(
             """
             <style>
@@ -2423,4 +2099,3 @@ def main():
 # ------------------------------------------------------------------
 if __name__ == '__main__':
     main()
-
