@@ -1337,4 +1337,8 @@ def main():
 # Actually run the Streamlit app
 # ------------------------------------------------------------------
 if __name__ == '__main__':
+    if not uploaded_files:
+    st.error("Keine PDF-Dateien hochgeladen.")
+    return
+
     main()
