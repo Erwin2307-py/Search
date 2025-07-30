@@ -59,6 +59,127 @@ if "logged_in" not in st.session_state:
 if not st.session_state["logged_in"]:
     login()
     st.stop()
+# ------------------------------------------------------------------
+# Module Import Helper Functions (HINZUFÜGEN NACH DEN IMPORTS)
+# ------------------------------------------------------------------
+def safe_import_module(module_path, function_name):
+    """Sichere Modul-Import Funktion"""
+    try:
+        if module_path == "modules.email_module":
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("email_module", "modules/email_module.py")
+            if spec is None:
+                return None
+            email_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(email_module)
+            
+            if hasattr(email_module, function_name):
+                return getattr(email_module, function_name)
+            else:
+                st.warning(f"⚠️ Funktion '{function_name}' nicht im Modul gefunden!")
+                return None
+                
+        elif module_path == "modules.codewords_pubmed":
+            from modules.codewords_pubmed import module_codewords_pubmed
+            return module_codewords_pubmed
+            
+        elif module_path == "modules.online_api_filter":
+            from modules.online_api_filter import module_online_api_filter
+            return module_online_api_filter
+        else:
+            return None
+            
+    except ImportError as e:
+        st.warning(f"⚠️ Modul {module_path} konnte nicht importiert werden: {str(e)}")
+        return None
+    except Exception as e:
+        st.error(f"❌ Fehler beim Importieren von {module_path}: {str(e)}")
+        return None
+
+def check_module_exists(module_path):
+    """Prüft ob ein Modul existiert"""
+    try:
+        file_path = module_path.replace(".", "/") + ".py"
+        return os.path.exists(file_path)
+    except:
+        return False
+
+def integrated_email_interface():
+    """Integrierte Email-Funktionalität als Fallback"""
+    st.subheader("📧 Integrierte Email-Funktionen")
+    st.info("✅ Verwendet integrierte Email-Funktionalität")
+    
+    # Initialize Session State für Email
+    if "email_config" not in st.session_state:
+        st.session_state["email_config"] = {
+            "sender_email": "",
+            "recipient_email": "",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": 587
+        }
+    
+    if "email_history" not in st.session_state:
+        st.session_state["email_history"] = []
+    
+    # Email-Konfiguration
+    with st.expander("📧 Email-Konfiguration", expanded=True):
+        with st.form("integrated_email_config"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                sender_email = st.text_input(
+                    "Absender Email", 
+                    value=st.session_state["email_config"]["sender_email"]
+                )
+                smtp_server = st.text_input(
+                    "SMTP Server", 
+                    value=st.session_state["email_config"]["smtp_server"]
+                )
+            
+            with col2:
+                recipient_email = st.text_input(
+                    "Empfänger Email", 
+                    value=st.session_state["email_config"]["recipient_email"]
+                )
+                smtp_port = st.number_input(
+                    "SMTP Port", 
+                    value=st.session_state["email_config"]["smtp_port"]
+                )
+            
+            if st.form_submit_button("💾 Konfiguration speichern"):
+                st.session_state["email_config"].update({
+                    "sender_email": sender_email,
+                    "recipient_email": recipient_email,
+                    "smtp_server": smtp_server,
+                    "smtp_port": smtp_port
+                })
+                st.success("✅ Email-Konfiguration gespeichert!")
+    
+    # Test-Email senden
+    if st.button("📧 Test-Email senden"):
+        config = st.session_state["email_config"]
+        if config.get("sender_email") and config.get("recipient_email"):
+            test_email = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "type": "Test",
+                "subject": "Test-Email vom Paper-Suche System",
+                "recipient": config["recipient_email"],
+                "status": "Simuliert"
+            }
+            st.session_state["email_history"].append(test_email)
+            st.success("✅ Test-Email simuliert und zur Historie hinzugefügt!")
+        else:
+            st.error("❌ Bitte konfigurieren Sie zuerst Ihre Email-Einstellungen!")
+    
+    # Email-Historie anzeigen
+    if st.button("📊 Email-Historie anzeigen"):
+        history = st.session_state.get("email_history", [])
+        if history:
+            st.subheader("📨 Email-Historie")
+            for i, email in enumerate(reversed(history[-5:]), 1):  # Letzte 5
+                st.write(f"**{i}.** {email.get('type', 'N/A')} - {email.get('timestamp', 'N/A')[:19]} - Status: {email.get('status', 'N/A')}")
+        else:
+            st.info("Keine Emails in der Historie.")
 
 # ------------------------------------------------------------------
 # 1) Gemeinsame Funktionen & Klassen (KORRIGIERT - KEINE HTML-ENTITIES)
