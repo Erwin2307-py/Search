@@ -63,8 +63,8 @@ if not st.session_state["logged_in"]:
 # 1) Gemeinsame Funktionen & Klassen
 # ------------------------------------------------------------------
 def clean_html_except_br(text):
-    """Removes all HTML tags except <br>."""
-    cleaned_text = re.sub(r'</?(?!br\b)[^>]*>', '', text)
+    """Removes all HTML tags except &lt;br&gt;."""
+    cleaned_text = re.sub(r'&lt;/?(?!br\b)[^&gt;]*&gt;', '', text)
     return cleaned_text
 
 def translate_text_openai(text, source_language, target_language, api_key):
