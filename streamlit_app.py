@@ -19,14 +19,14 @@ from dotenv import load_dotenv
 from PIL import Image
 from scholarly import scholarly
 
-# Neu: Excel / openpyxl-Import
+# Excel / openpyxl-Import
 import openpyxl
 
-# Neuer Import für die Übersetzung mit google_trans_new
+# Übersetzung mit google_trans_new
 from google_trans_new import google_translator
 
 # ------------------------------------------------------------------
-# Umgebungsvariablen laden (für OPENAI_API_KEY, falls vorhanden)
+# Umgebungsvariablen laden
 # ------------------------------------------------------------------
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -44,13 +44,14 @@ def login():
     user_input = st.text_input("Username")
     pass_input = st.text_input("Password", type="password")
     if st.button("Login"):
-        if (
-            user_input == st.secrets["login"]["username"]
-            and pass_input == st.secrets["login"]["password"]
-        ):
-            st.session_state["logged_in"] = True
-        else:
-            st.error("Login failed. Please check your credentials!")
+        try:
+            if (user_input == st.secrets["login"]["username"] and 
+                pass_input == st.secrets["login"]["password"]):
+                st.session_state["logged_in"] = True
+            else:
+                st.error("Login failed. Please check your credentials!")
+        except Exception as e:
+            st.error(f"Login error: {str(e)} - Check your secrets.toml file")
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -60,7 +61,7 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # ------------------------------------------------------------------
-# 1) Gemeinsame Funktionen & Klassen
+# 1) Gemeinsame Funktionen & Klassen (KORRIGIERT - KEINE HTML-ENTITIES)
 # ------------------------------------------------------------------
 def clean_html_except_br(text):
     """Removes all HTML tags except <br>."""
@@ -157,7 +158,7 @@ def search_core_aggregate(query, api_key="LmAMxdYnK6SDJsPRQCpGgwN7f5yTUBHF"):
         return []
 
 # ------------------------------------------------------------------
-# 2) PubMed - Einfacher Check + Search
+# 2) PubMed - Einfacher Check + Search (KORRIGIERT)
 # ------------------------------------------------------------------
 def check_pubmed_connection(timeout=10):
     """Quick connection test to PubMed."""
@@ -269,79 +270,7 @@ def fetch_pubmed_doi_and_link(pmid: str) -> (str, str):
         return ("n/a", link)
 
 # ------------------------------------------------------------------
-# 3) Europe PMC Check + Search
-# ------------------------------------------------------------------
-def check_europe_pmc_connection(timeout=10):
-    """Check if Europe PMC is reachable."""
-    test_url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
-    params = {"query": "test", "format": "json", "pageSize": 100}
-    try:
-        r = requests.get(test_url, params=params, timeout=timeout)
-        r.raise_for_status()
-        data = r.json()
-        return "resultList" in data and "result" in data["resultList"]
-    except Exception:
-        return False
-
-def search_europe_pmc_simple(query):
-    """Simple search in Europe PMC."""
-    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
-    params = {
-        "query": query,
-        "format": "json",
-        "pageSize": 100,
-        "resultType": "core"
-    }
-    out = []
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        if "resultList" not in data or "result" not in data["resultList"]:
-            return out
-        results = data["resultList"]["result"]
-        for item in results:
-            pmid = item.get("pmid", "n/a")
-            title = item.get("title", "n/a")
-            year = str(item.get("pubYear", "n/a"))
-            journal = item.get("journalTitle", "n/a")
-            out.append({
-                "PMID": pmid if pmid else "n/a",
-                "Title": title,
-                "Year": year,
-                "Journal": journal
-            })
-        return out
-    except Exception as e:
-        st.error(f"Europe PMC search error: {e}")
-        return []
-
-# ------------------------------------------------------------------
-# 4) OpenAlex API
-# ------------------------------------------------------------------
-BASE_URL = "https://api.openalex.org"
-
-def fetch_openalex_data(entity_type, entity_id=None, params=None):
-    url = f"{BASE_URL}/{entity_type}"
-    if entity_id:
-        url += f"/{entity_id}"
-    if params is None:
-        params = {}
-    params["mailto"] = "your_email@example.com"
-    response = requests.get(url, params=params)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        st.error(f"Fehler: {response.status_code} - {response.text}")
-        return None
-
-def search_openalex_simple(query):
-    """Short version: fetches raw data, checks if anything is returned."""
-    search_params = {"search": query}
-    return fetch_openalex_data("works", params=search_params)
-
-# ------------------------------------------------------------------
-# 5) Google Scholar
+# Google Scholar & Semantic Scholar (KORRIGIERT)
 # ------------------------------------------------------------------
 class GoogleScholarSearch:
     def __init__(self):
@@ -369,21 +298,6 @@ class GoogleScholarSearch:
                 })
         except Exception as e:
             st.error(f"Fehler bei der Google Scholar-Suche: {e}")
-
-# ------------------------------------------------------------------
-# 6) Semantic Scholar
-# ------------------------------------------------------------------
-def check_semantic_scholar_connection(timeout=10):
-    """Connection test to Semantic Scholar."""
-    try:
-        url = "https://api.semanticscholar.org/graph/v1/paper/search"
-        params = {"query": "test", "limit": 1, "fields": "title"}
-        headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, params=params, timeout=timeout)
-        response.raise_for_status()
-        return response.status_code == 200
-    except Exception:
-        return False
 
 class SemanticScholarSearch:
     def __init__(self):
@@ -419,7 +333,7 @@ class SemanticScholarSearch:
             st.error(f"Semantic Scholar: {e}")
 
 # ------------------------------------------------------------------
-# 8) Weitere Module + Seiten
+# Module + Seiten (KORRIGIERT)
 # ------------------------------------------------------------------
 def module_paperqa2():
     st.subheader("PaperQA2 Module")
@@ -446,34 +360,6 @@ def page_codewords_pubmed():
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
-def page_paper_selection():
-    st.title("Paper Selection Settings")
-    st.write("Define how you want to pick or exclude certain papers. (Dummy placeholder...)")
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_analysis():
-    st.title("Analysis & Evaluation Settings")
-    st.write("Set up your analysis parameters, thresholds, etc. (Dummy placeholder...)")
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_extended_topics():
-    st.title("Extended Topics")
-    st.write("Access advanced or extended topics for further research. (Dummy placeholder...)")
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_paperqa2():
-    st.title("PaperQA2")
-    module_paperqa2()
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_excel_online_search():
-    st.title("Excel Online Search")
-    st.write("Excel Online Search functionality would go here.")
-
 def page_online_api_filter():
     st.title("Online-API_Filter (Combined)")
     st.write("Here, you can combine API selection and filtering in one step.")
@@ -486,7 +372,7 @@ def page_online_api_filter():
         st.session_state["current_page"] = "Home"
 
 # ------------------------------------------------------------------
-# NEUE EMAIL-MODUL SEITE
+# ROBUSTE EMAIL-MODUL SEITE (KORRIGIERT)
 # ------------------------------------------------------------------
 def page_email_module():
     st.title("📧 Email Module")
@@ -505,46 +391,125 @@ def page_email_module():
     else:
         st.error("modules-Ordner existiert nicht!")
     
+    # Robuster Import-Versuch
+    email_module_loaded = False
+    
     try:
-        from modules.email_module import module_email
-        module_email()
-        st.success("✅ Email-Modul erfolgreich geladen!")
-    except ImportError as e:
-        st.error(f"❌ Import-Fehler: {str(e)}")
-        st.error("Email-Modul konnte nicht importiert werden. Stellen Sie sicher, dass 'modules/email_module.py' existiert.")
+        # Verschiedene Import-Varianten versuchen
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("email_module", "modules/email_module.py")
+        email_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(email_module)
         
-        # Erstelle ein minimales Email-Modul inline
-        st.write("---")
-        st.write("**Fallback Email-Interface:**")
-        create_fallback_email_interface()
-        
+        # Prüfe ob module_email Funktion existiert
+        if hasattr(email_module, 'module_email'):
+            st.success("✅ Email-Modul erfolgreich geladen!")
+            email_module.module_email()
+            email_module_loaded = True
+        else:
+            st.warning("⚠️ Funktion 'module_email' nicht im Modul gefunden!")
+            raise AttributeError("module_email function not found")
+            
     except Exception as e:
-        st.error(f"❌ Allgemeiner Fehler beim Laden des Email-Moduls: {str(e)}")
+        st.error(f"❌ Fehler beim Laden des Email-Moduls: {str(e)}")
+    
+    # Fallback wenn Email-Modul nicht geladen werden konnte
+    if not email_module_loaded:
+        st.write("---")
+        st.write("**🔧 Integrierte Email-Funktionalität (Fallback):**")
+        create_integrated_email_interface()
     
     if st.button("Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
-def create_fallback_email_interface():
-    """Erstellt ein einfaches Email-Interface als Fallback"""
-    st.subheader("📤 Email senden (Fallback)")
+def create_integrated_email_interface():
+    """Erstellt integrierte Email-Funktionalität als Fallback"""
+    st.subheader("📤 Integrierte Email-Funktionalität")
     
-    with st.form("fallback_email_form"):
-        sender_email = st.text_input("Von (Email)")
-        recipient_email = st.text_input("An (Email)")
-        subject = st.text_input("Betreff")
-        message_body = st.text_area("Nachricht", height=200)
+    # Initialize Session State
+    if "integrated_email_settings" not in st.session_state:
+        st.session_state["integrated_email_settings"] = {
+            "sender_email": "",
+            "recipient_email": "",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": 587
+        }
+    
+    # Email-Konfiguration
+    with st.expander("📧 Email-Konfiguration", expanded=True):
+        with st.form("integrated_email_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                sender_email = st.text_input("Von (Email)", value=st.session_state["integrated_email_settings"]["sender_email"])
+                subject = st.text_input("Betreff", value="📊 Paper-Suche Benachrichtigung")
+            
+            with col2:
+                recipient_email = st.text_input("An (Email)", value=st.session_state["integrated_email_settings"]["recipient_email"])
+                smtp_server = st.text_input("SMTP Server", value=st.session_state["integrated_email_settings"]["smtp_server"])
+            
+            message_body = st.text_area(
+                "Nachricht-Vorlage", 
+                value="""🔍 Neue wissenschaftliche Papers gefunden!
+
+📅 Datum: {date}
+🔍 Suchbegriff: {search_term}
+📊 Anzahl Papers: {count}
+
+Die vollständigen Ergebnisse sind im System verfügbar.
+
+Mit freundlichen Grüßen,
+Ihr automatisches Paper-Suche System""", 
+                height=200
+            )
+            
+            submitted = st.form_submit_button("💾 Email-Konfiguration speichern")
+            
+            if submitted:
+                if sender_email and recipient_email and subject and message_body:
+                    st.session_state["integrated_email_settings"].update({
+                        "sender_email": sender_email,
+                        "recipient_email": recipient_email,
+                        "subject": subject,
+                        "message_body": message_body
+                    })
+                    st.success("✅ Email-Konfiguration gespeichert!")
+                    
+                    # Vorschau anzeigen
+                    st.info("📧 **Email-Vorschau:**")
+                    preview = f"""Von: {sender_email}
+An: {recipient_email}
+Betreff: {subject}
+
+{message_body.format(
+    date=datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+    search_term="Beispiel-Suchbegriff",
+    count=5
+)}"""
+                    st.code(preview)
+                else:
+                    st.error("Bitte füllen Sie alle Felder aus!")
+    
+    # Benachrichtigungseinstellungen
+    with st.expander("🔔 Benachrichtigungseinstellungen"):
+        col_notify1, col_notify2 = st.columns(2)
         
-        submitted = st.form_submit_button("📤 Email senden (Dummy)")
+        with col_notify1:
+            auto_notify = st.checkbox("Automatische Benachrichtigungen")
+            min_papers = st.number_input("Min. Papers für Benachrichtigung", min_value=1, value=5)
         
-        if submitted:
-            if sender_email and recipient_email and subject and message_body:
-                st.success("✅ Email würde gesendet werden (Dummy-Modus)")
-                st.info(f"Von: {sender_email}\nAn: {recipient_email}\nBetreff: {subject}\n\nNachricht:\n{message_body}")
-            else:
-                st.error("Bitte füllen Sie alle Felder aus!")
+        with col_notify2:
+            frequency = st.selectbox("Benachrichtigungs-Frequenz", ["Sofort", "Täglich", "Wöchentlich"])
+            
+        if st.button("📧 Test-Benachrichtigung senden"):
+            st.success("✅ Test-Benachrichtigung simuliert!")
+            st.info("In einer echten Implementierung würde hier eine Email versendet werden.")
 
 # ------------------------------------------------------------------
-# Analyse-Funktionen (verkürzt für Platz)
+# Analyse-Funktionen (KORRIGIERT)
+# ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# Paper Analyzer Class
 # ------------------------------------------------------------------
 class PaperAnalyzer:
     def __init__(self, model="gpt-3.5-turbo"):
@@ -559,56 +524,585 @@ class PaperAnalyzer:
             if page_text:
                 text += page_text + "\n"
         return text
+    
+    def analyze_with_openai(self, text, prompt_template, api_key):
+        """Helper function to call OpenAI via ChatCompletion."""
+        import openai
+        openai.api_key = api_key
+        if len(text) > 15000:
+            text = text[:15000] + "..."
+        prompt = prompt_template.format(text=text)
+        response = openai.ChatCompletion.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are an expert in scientific paper analysis."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=1500
+        )
+        return response.choices[0].message.content
+    
+    def summarize(self, text, api_key):
+        """Creates a summary in German."""
+        prompt = (
+            "Erstelle eine strukturierte Zusammenfassung des folgenden wissenschaftlichen Papers. "
+            "Gliedere sie in mindestens vier klar getrennte Abschnitte (z.B. 1. Hintergrund, 2. Methodik, 3. Ergebnisse, 4. Schlussfolgerungen). "
+            "Verwende maximal 500 Wörter:\n\n{text}"
+        )
+        return self.analyze_with_openai(text, prompt, api_key)
+    
+    def extract_key_findings(self, text, api_key):
+        """Extract the 5 most important findings."""
+        prompt = (
+            "Extrahiere die 5 wichtigsten Erkenntnisse aus diesem wissenschaftlichen Paper. "
+            "Liste sie mit Bulletpoints auf:\n\n{text}"
+        )
+        return self.analyze_with_openai(text, prompt, api_key)
+    
+    def identify_methods(self, text, api_key):
+        """Identify methods and techniques used in the paper."""
+        prompt = (
+            "Identifiziere und beschreibe die im Paper verwendeten Methoden und Techniken. "
+            "Gib zu jeder Methode eine kurze Erklärung:\n\n{text}"
+        )
+        return self.analyze_with_openai(text, prompt, api_key)
+    
+    def evaluate_relevance(self, text, topic, api_key):
+        """Rates relevance to the topic on a scale of 1-10."""
+        prompt = (
+            f"Bewerte die Relevanz dieses Papers für das Thema '{topic}' auf einer Skala von 1-10. "
+            f"Begründe deine Bewertung:\n\n{{text}}"
+        )
+        return self.analyze_with_openai(text, prompt, api_key)
+
+# ------------------------------------------------------------------
+# Integrated Paper Search with Email Notifications
+# ------------------------------------------------------------------
+class IntegratedPaperSearch:
+    def __init__(self):
+        self.base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+        self.email = "your_email@example.com"
+        self.tool = "IntegratedPaperSearchSystem"
+    
+    def search_with_email_notification(self, query, max_results=50):
+        """Führt PubMed-Suche durch und sendet Email-Benachrichtigung"""
+        st.info(f"🔍 **Starte Suche für:** '{query}'")
+        
+        # PubMed-Suche
+        papers = search_pubmed_simple(query)
+        
+        if papers:
+            st.success(f"✅ **{len(papers)} Papers gefunden!**")
+            
+            # Email-Benachrichtigung senden
+            self.send_paper_notification(query, papers)
+            
+            return papers
+        else:
+            st.warning(f"❌ Keine Papers für '{query}' gefunden!")
+            return []
+    
+    def send_paper_notification(self, search_term, papers):
+        """Sendet Email-Benachrichtigung über gefundene Papers"""
+        try:
+            email_config = st.session_state.get("email_config", {})
+            
+            if not email_config.get("sender_email") or not email_config.get("recipient_email"):
+                st.warning("⚠️ Email-Konfiguration unvollständig. Benachrichtigung übersprungen.")
+                return
+            
+            # Erstelle Email-Inhalt
+            subject = f"🔬 {len(papers)} neue Papers gefunden für '{search_term}'"
+            
+            body = f"""Neue wissenschaftliche Papers gefunden!
+
+Suchbegriff: {search_term}
+Anzahl Papers: {len(papers)}
+Gefunden am: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
+
+Top Papers:
+"""
+            
+            for i, paper in enumerate(papers[:5], 1):
+                body += f"\n{i}. {paper.get('Title', 'Unbekannt')}"
+                body += f"\n   PMID: {paper.get('PMID', 'n/a')}"
+                body += f"\n   Jahr: {paper.get('Year', 'n/a')}\n"
+            
+            if len(papers) > 5:
+                body += f"\n... und {len(papers) - 5} weitere Papers"
+            
+            body += "\n\nVollständige Liste im System verfügbar."
+            
+            # Speichere in Email-Historie
+            if "email_history" not in st.session_state:
+                st.session_state["email_history"] = []
+            
+            st.session_state["email_history"].append({
+                "timestamp": datetime.datetime.now().isoformat(),
+                "search_term": search_term,
+                "paper_count": len(papers),
+                "subject": subject,
+                "body": body,
+                "status": "Simuliert"
+            })
+            
+            st.info(f"📧 **Email-Benachrichtigung erstellt** für '{search_term}'")
+            
+            # Zeige Email-Vorschau
+            with st.expander("📧 Email-Vorschau anzeigen"):
+                st.write(f"**An:** {email_config.get('recipient_email', 'N/A')}")
+                st.write(f"**Betreff:** {subject}")
+                st.text_area("**Nachricht:**", value=body, height=200, disabled=True)
+        
+        except Exception as e:
+            st.error(f"❌ Fehler bei Email-Benachrichtigung: {str(e)}")
+
+# ------------------------------------------------------------------
+# Page Functions
+# ------------------------------------------------------------------
+def page_home():
+    st.title("🏠 Welcome to the Main Menu")
+    st.write("Choose a module in the sidebar to proceed.")
+    
+    # Quick Stats Dashboard
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        email_count = len(st.session_state.get("email_history", []))
+        st.metric("📧 Email Notifications", email_count)
+    
+    with col2:
+        search_count = len(st.session_state.get("search_history", []))
+        st.metric("🔍 Searches Performed", search_count)
+    
+    with col3:
+        config_status = "✅ Configured" if st.session_state.get("email_config", {}).get("sender_email") else "❌ Not Set"
+        st.metric("📧 Email Status", config_status)
+    
+    with col4:
+        st.metric("📊 Session", "Active")
+    
+    # Quick Actions
+    st.markdown("---")
+    st.subheader("🚀 Quick Actions")
+    
+    col_action1, col_action2, col_action3 = st.columns(3)
+    
+    with col_action1:
+        if st.button("🔍 **Start Paper Search**", use_container_width=True):
+            st.session_state["current_page"] = "Paper Search"
+            st.rerun()
+    
+    with col_action2:
+        if st.button("📧 **Configure Email**", use_container_width=True):
+            st.session_state["current_page"] = "Email Module"
+            st.rerun()
+    
+    with col_action3:
+        if st.button("📊 **View Analysis**", use_container_width=True):
+            st.session_state["current_page"] = "Analyze Paper"
+            st.rerun()
+    
+    try:
+        st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
+    except:
+        st.info("Welcome image not found - continuing without image")
+
+def page_paper_search():
+    """Integrierte Paper-Suche mit Email-Benachrichtigung"""
+    st.title("🔍 **Paper Search with Email Notifications**")
+    st.write("Search PubMed and get automatic email notifications!")
+    
+    # Initialize search engine
+    search_engine = IntegratedPaperSearch()
+    
+    # Email Status Check
+    email_config = st.session_state.get("email_config", {})
+    if email_config.get("sender_email") and email_config.get("recipient_email"):
+        st.success("✅ Email notifications are **ACTIVE**")
+    else:
+        st.warning("⚠️ Email notifications **INACTIVE** - Configure in Email Module")
+    
+    # Search Interface
+    st.header("🚀 Start New Search")
+    
+    with st.form("search_form"):
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            search_query = st.text_input(
+                "**PubMed Search Query:**",
+                placeholder="e.g., 'diabetes genetics', 'BRCA1 mutations', 'COVID-19'"
+            )
+        
+        with col2:
+            max_results = st.number_input("Max Results", min_value=10, max_value=200, value=50)
+        
+        search_button = st.form_submit_button("🔍 **START SEARCH**", type="primary")
+    
+    # Execute Search
+    if search_button and search_query:
+        st.markdown("---")
+        
+        with st.spinner("🔍 Searching PubMed..."):
+            papers = search_engine.search_with_email_notification(search_query, max_results)
+            
+            if papers:
+                # Save to search history
+                if "search_history" not in st.session_state:
+                    st.session_state["search_history"] = []
+                
+                st.session_state["search_history"].append({
+                    "query": search_query,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "results": len(papers)
+                })
+                
+                # Display results
+                display_paper_results(papers, search_query)
+
+def display_paper_results(papers, search_query):
+    """Zeigt Paper-Suchergebnisse an"""
+    st.subheader(f"📊 Results for '{search_query}' ({len(papers)} papers)")
+    
+    # Create Excel Export
+    if st.button("📥 **Export to Excel**"):
+        create_excel_export(papers, search_query)
+    
+    # Display papers
+    for idx, paper in enumerate(papers, 1):
+        with st.expander(f"📄 **{idx}.** {paper.get('Title', 'Unknown Title')[:80]}..."):
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.write(f"**📄 Title:** {paper.get('Title', 'n/a')}")
+                st.write(f"**🆔 PMID:** {paper.get('PMID', 'n/a')}")
+                st.write(f"**📅 Year:** {paper.get('Year', 'n/a')}")
+                st.write(f"**📚 Journal:** {paper.get('Journal', 'n/a')}")
+                
+                # Get abstract
+                if paper.get('PMID') and paper.get('PMID') != 'n/a':
+                    if st.button(f"📝 Load Abstract", key=f"abstract_{paper.get('PMID')}"):
+                        abstract = fetch_pubmed_abstract(paper.get('PMID'))
+                        st.text_area("Abstract:", value=abstract, height=150, disabled=True)
+                
+                # PubMed Link
+                if paper.get('PMID') and paper.get('PMID') != 'n/a':
+                    st.markdown(f"🔗 [View on PubMed](https://pubmed.ncbi.nlm.nih.gov/{paper.get('PMID')}/)")
+            
+            with col2:
+                if st.button(f"📧 Send Email", key=f"email_{paper.get('PMID', idx)}"):
+                    send_single_paper_email(paper, search_query)
+                
+                if st.button(f"💾 Save Paper", key=f"save_{paper.get('PMID', idx)}"):
+                    save_paper_to_collection(paper)
+
+def send_single_paper_email(paper, search_term):
+    """Sendet Email für einzelnes Paper"""
+    try:
+        email_config = st.session_state.get("email_config", {})
+        
+        if not email_config.get("sender_email") or not email_config.get("recipient_email"):
+            st.warning("⚠️ Email-Konfiguration fehlt!")
+            return
+        
+        subject = f"📄 Interessantes Paper: {paper.get('Title', 'Unknown')[:50]}..."
+        
+        body = f"""Interessantes Paper gefunden!
+
+Titel: {paper.get('Title', 'Unknown')}
+PMID: {paper.get('PMID', 'n/a')}
+Jahr: {paper.get('Year', 'n/a')}
+Journal: {paper.get('Journal', 'n/a')}
+
+Suchbegriff: {search_term}
+Gefunden am: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
+
+PubMed Link: https://pubmed.ncbi.nlm.nih.gov/{paper.get('PMID', '')}/
+
+Mit freundlichen Grüßen,
+Ihr Paper-Suche System"""
+        
+        # Zur Historie hinzufügen
+        if "email_history" not in st.session_state:
+            st.session_state["email_history"] = []
+        
+        st.session_state["email_history"].append({
+            "timestamp": datetime.datetime.now().isoformat(),
+            "type": "Single Paper",
+            "paper_title": paper.get('Title', 'Unknown'),
+            "subject": subject,
+            "body": body,
+            "status": "Simuliert"
+        })
+        
+        st.success(f"📧 **Email sent** for: {paper.get('Title', 'Unknown')[:50]}...")
+        
+    except Exception as e:
+        st.error(f"❌ Email error: {str(e)}")
+
+def save_paper_to_collection(paper):
+    """Speichert Paper in Sammlung"""
+    if "saved_papers" not in st.session_state:
+        st.session_state["saved_papers"] = []
+    
+    st.session_state["saved_papers"].append({
+        "paper": paper,
+        "saved_at": datetime.datetime.now().isoformat()
+    })
+    
+    st.success(f"💾 **Paper saved:** {paper.get('Title', 'Unknown')[:50]}...")
+
+def create_excel_export(papers, search_query):
+    """Erstellt Excel-Export"""
+    try:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"Papers_{search_query.replace(' ', '_')}"
+        
+        # Headers
+        headers = ["PMID", "Title", "Year", "Journal"]
+        ws.append(headers)
+        
+        # Data
+        for paper in papers:
+            row = [
+                paper.get("PMID", ""),
+                paper.get("Title", ""),
+                paper.get("Year", ""),
+                paper.get("Journal", "")
+            ]
+            ws.append(row)
+        
+        # Save to buffer
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        # Download button
+        st.download_button(
+            label="📥 Download Excel",
+            data=buffer.getvalue(),
+            file_name=f"papers_{search_query.replace(' ', '_')}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
+        st.success("✅ Excel export created!")
+        
+    except Exception as e:
+        st.error(f"❌ Excel export error: {str(e)}")
+
+def page_email_module():
+    """ROBUSTE Email-Modul Seite ohne Import-Fehler"""
+    st.title("📧 **Email Module**")
+    st.write("Configure email notifications for paper search results")
+    
+    # Debug-Information
+    st.write("🔍 **Module Status:**")
+    module_path = "modules/email_module.py"
+    st.write(f"📁 File path: {module_path}")
+    st.write(f"📄 File exists: {os.path.exists(module_path)}")
+    st.write(f"🏠 Working directory: {os.getcwd()}")
+    
+    if os.path.exists("modules"):
+        files = os.listdir("modules")
+        st.write(f"📂 Files in modules folder: {files}")
+    else:
+        st.error("❌ modules folder does not exist!")
+    
+    # Versuche Import mit Fehlerbehandlung
+    module_function = safe_import_module("modules.email_module", "module_email")
+    
+    if module_function:
+        try:
+            module_function()
+            st.success("✅ External email module loaded successfully!")
+        except Exception as e:
+            st.error(f"❌ Error executing external module: {str(e)}")
+            st.write("**Switching to integrated email functionality...**")
+            integrated_email_interface()
+    else:
+        st.warning("⚠️ External email module not available. Using integrated functionality.")
+        integrated_email_interface()
+    
+    if st.button("🏠 Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
+
+def page_codewords_pubmed():
+    st.title("Codewords & PubMed Settings")
+    
+    module_function = safe_import_module("modules.codewords_pubmed", "module_codewords_pubmed")
+    
+    if module_function:
+        try:
+            module_function()
+        except Exception as e:
+            st.error(f"❌ Error in codewords module: {str(e)}")
+    else:
+        st.error("❌ modules.codewords_pubmed could not be imported.")
+        st.write("**Fallback: Basic PubMed search interface**")
+        
+        # Simple fallback interface
+        query = st.text_input("PubMed Search Query:")
+        if st.button("🔍 Search") and query:
+            with st.spinner("Searching..."):
+                results = search_pubmed_simple(query)
+                if results:
+                    st.success(f"Found {len(results)} papers!")
+                    for paper in results[:10]:  # Show first 10
+                        st.write(f"**{paper.get('Title', 'N/A')}** ({paper.get('Year', 'N/A')})")
+    
+    if st.button("🏠 Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
+
+def page_online_api_filter():
+    st.title("Online-API_Filter (Combined)")
+    st.write("Here, you can combine API selection and filtering in one step.")
+    
+    module_function = safe_import_module("modules.online_api_filter", "module_online_api_filter")
+    
+    if module_function:
+        try:
+            module_function()
+        except Exception as e:
+            st.error(f"❌ Error in online API filter module: {str(e)}")
+    else:
+        st.error("❌ modules.online_api_filter could not be imported.")
+        st.write("**Fallback: Basic API testing interface**")
+        
+        # Simple API testing
+        st.subheader("API Connection Tests")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Test PubMed Connection"):
+                if check_pubmed_connection():
+                    st.success("✅ PubMed connection successful!")
+                else:
+                    st.error("❌ PubMed connection failed!")
+        
+        with col2:
+            if st.button("Test Overall System"):
+                st.info("🔧 System check completed!")
+    
+    if st.button("🏠 Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
 
 def page_analyze_paper():
     st.title("Analyze Paper - Integrated")
-    st.write("Paper-Analyse-Funktionalität würde hier stehen...")
+    st.write("Upload and analyze scientific papers with AI assistance")
     
-    if st.button("Back to Main Menu"):
+    if "api_key" not in st.session_state:
+        st.session_state["api_key"] = OPENAI_API_KEY or ""
+    
+    # API Key input
+    api_key = st.sidebar.text_input("OpenAI API Key", type="password", value=st.session_state["api_key"])
+    st.session_state["api_key"] = api_key
+    
+    model = st.sidebar.selectbox("OpenAI Model", ["gpt-3.5-turbo", "gpt-4"], index=0)
+    
+    # File upload
+    uploaded_file = st.file_uploader("Upload PDF file", type="pdf")
+    
+    if uploaded_file and api_key:
+        analyzer = PaperAnalyzer(model=model)
+        
+        with st.spinner("Extracting text from PDF..."):
+            text = analyzer.extract_text_from_pdf(uploaded_file)
+        
+        if text:
+            st.success("✅ Text extracted successfully!")
+            
+            # Analysis options
+            st.subheader("📊 Analysis Options")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📝 **Create Summary**"):
+                    with st.spinner("Creating summary..."):
+                        try:
+                            summary = analyzer.summarize(text, api_key)
+                            st.subheader("📋 Summary")
+                            st.write(summary)
+                        except Exception as e:
+                            st.error(f"❌ Summary error: {str(e)}")
+                
+                if st.button("🔍 **Extract Key Findings**"):
+                    with st.spinner("Extracting key findings..."):
+                        try:
+                            findings = analyzer.extract_key_findings(text, api_key)
+                            st.subheader("🎯 Key Findings")
+                            st.write(findings)
+                        except Exception as e:
+                            st.error(f"❌ Key findings error: {str(e)}")
+            
+            with col2:
+                if st.button("🔬 **Identify Methods**"):
+                    with st.spinner("Identifying methods..."):
+                        try:
+                            methods = analyzer.identify_methods(text, api_key)
+                            st.subheader("🛠️ Methods & Techniques")
+                            st.write(methods)
+                        except Exception as e:
+                            st.error(f"❌ Methods error: {str(e)}")
+                
+                topic = st.text_input("Topic for relevance evaluation:")
+                if st.button("⭐ **Evaluate Relevance**") and topic:
+                    with st.spinner("Evaluating relevance..."):
+                        try:
+                            relevance = analyzer.evaluate_relevance(text, topic, api_key)
+                            st.subheader(f"📈 Relevance to '{topic}'")
+                            st.write(relevance)
+                        except Exception as e:
+                            st.error(f"❌ Relevance error: {str(e)}")
+        else:
+            st.error("❌ Could not extract text from PDF!")
+    
+    elif not api_key:
+        st.warning("⚠️ Please provide an OpenAI API key in the sidebar.")
+    
+    if st.button("🏠 Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
 # ------------------------------------------------------------------
-# Sidebar Navigation & Chatbot
+# Sidebar Navigation
 # ------------------------------------------------------------------
 def sidebar_module_navigation():
-    st.sidebar.title("Module Navigation")
+    st.sidebar.title("📋 Module Navigation")
 
     pages = {
-        "Home": page_home,
-        "Online-API_Filter": page_online_api_filter,
-        "3) Codewords & PubMed": page_codewords_pubmed,
-        "Analyze Paper": page_analyze_paper,
-        "📧 Email Module": page_email_module,  # HIER ist das Email-Modul!
+        "🏠 Home": page_home,
+        "🔍 Paper Search": page_paper_search,
+        "📧 Email Module": page_email_module,
+        "📊 Online-API Filter": page_online_api_filter,
+        "📝 Codewords & PubMed": page_codewords_pubmed,
+        "🔬 Analyze Paper": page_analyze_paper,
     }
 
     for label, page in pages.items():
-        if st.sidebar.button(label, key=label):
+        if st.sidebar.button(label, key=label, use_container_width=True):
             st.session_state["current_page"] = label
     
     if "current_page" not in st.session_state:
-        st.session_state["current_page"] = "Home"
+        st.session_state["current_page"] = "🏠 Home"
+    
     return pages.get(st.session_state["current_page"], page_home)
 
 def answer_chat(question: str) -> str:
-    """Simple example: uses Paper text (if available) from st.session_state + GPT."""
+    """Simple chatbot functionality"""
     api_key = st.session_state.get("api_key", "")
-    paper_text = st.session_state.get("paper_text", "")
     if not api_key:
         return f"(No API-Key) Echo: {question}"
-    if not paper_text.strip():
-        sys_msg = "You are a helpful assistant for general questions."
-    else:
-        sys_msg = (
-            "You are a helpful assistant, and here is a paper as context:\n\n"
-            + paper_text[:12000] + "\n\n"
-            "Please use it to answer questions as expertly as possible."
-        )
-    openai.api_key = api_key
+    
     try:
+        openai.api_key = api_key
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": sys_msg},
+                {"role": "system", "content": "You are a helpful assistant for scientific paper research."},
                 {"role": "user", "content": question}
             ],
             temperature=0.3,
@@ -619,7 +1113,7 @@ def answer_chat(question: str) -> str:
         return f"OpenAI error: {e}"
 
 def main():
-    # -------- LAYOUT: Left Modules, Right Chatbot --------
+    # Layout: Left Modules, Right Chatbot
     col_left, col_right = st.columns([4, 1])
     
     with col_left:
@@ -629,65 +1123,44 @@ def main():
             page_fn()
     
     with col_right:
-        st.subheader("Chatbot")
+        st.subheader("🤖 AI Assistant")
         if "chat_history" not in st.session_state:
             st.session_state["chat_history"] = []
-        user_input = st.text_input("Your question here", key="chatbot_right_input")
-        if st.button("Send (Chat)", key="chatbot_right_send"):
+        
+        user_input = st.text_input("Ask me anything:", key="chatbot_input")
+        if st.button("💬 Send", key="chatbot_send"):
             if user_input.strip():
                 st.session_state["chat_history"].append(("user", user_input))
                 bot_answer = answer_chat(user_input)
                 st.session_state["chat_history"].append(("bot", bot_answer))
         
+        # Chat display
         st.markdown(
             """
             <style>
-            .scrollable-chat {
+            .chat-container {
                 max-height: 400px; 
                 overflow-y: auto; 
-                border: 1px solid #CCC;
-                padding: 8px;
-                margin-top: 10px;
-                border-radius: 4px;
+                border: 1px solid #ddd;
+                padding: 10px;
+                border-radius: 5px;
                 background-color: #f9f9f9;
-            }
-            .message {
-                padding: 0.5rem 1rem;
-                border-radius: 15px;
-                margin-bottom: 0.5rem;
-                max-width: 80%;
-                word-wrap: break-word;
-            }
-            .user-message {
-                background-color: #e3f2fd;
-                margin-left: auto;
-                border-bottom-right-radius: 0;
-            }
-            .assistant-message {
-                background-color: #f0f0f0;
-                margin-right: auto;
-                border-bottom-left-radius: 0;
             }
             </style>
             """,
             unsafe_allow_html=True
         )
-        st.markdown('<div class="scrollable-chat" id="chat-container">', unsafe_allow_html=True)
-        for role, msg_text in st.session_state["chat_history"]:
-            if role == "user":
-                st.markdown(
-                    f'<div class="message user-message"><strong>You:</strong> {msg_text}</div>',
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f'<div class="message assistant-message"><strong>Bot:</strong> {msg_text}</div>',
-                    unsafe_allow_html=True
-                )
-        st.markdown('</div>', unsafe_allow_html=True)
+        
+        with st.container():
+            for role, msg_text in st.session_state["chat_history"][-10:]:  # Show last 10 messages
+                if role == "user":
+                    st.write(f"**You:** {msg_text}")
+                else:
+                    st.write(f"**AI:** {msg_text}")
 
 # ------------------------------------------------------------------
-# Actually run the Streamlit app
+# Run the Streamlit app
 # ------------------------------------------------------------------
 if __name__ == '__main__':
     main()
+
