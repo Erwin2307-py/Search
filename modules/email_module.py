@@ -1,819 +1,375 @@
-# modules/paper_search_module.py - ERWEITERTE VERSION MIT NEU-PAPER-ERKENNUNG
+# modules/email_module.py - FUNKTIONIERENDE VERSION
 import streamlit as st
-import requests
-import xml.etree.ElementTree as ET
-import pandas as pd
 import datetime
-import time
-import re
-import io
-import openpyxl
-import os
-import json
-from typing import List, Dict, Any
 
-class PubMedSearchEngineAdvanced:
-    """Erweiterte PubMed-Suche mit Neu-Paper-Erkennung"""
+def module_email():
+    """DIESE FUNKTION MUSS EXISTIEREN - Haupt-Email-Modul"""
+    st.subheader("📧 Email-Benachrichtigungen für Paper-Suche")
+    st.success("✅ Email-Modul erfolgreich geladen!")
     
-    def __init__(self):
-        self.base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
-        self.email = "your_email@example.com"
-        self.tool = "PaperSearchSystemAdvanced"
-        self.excel_storage_path = "saved_searches"
-        
-        # Stelle sicher, dass der Speicher-Ordner existiert
-        if not os.path.exists(self.excel_storage_path):
-            os.makedirs(self.excel_storage_path)
-    
-    def search_papers_with_comparison(self, query: str, max_results: int = 50) -> Dict[str, Any]:
-        """Führt Suche durch und vergleicht mit vorherigen Ergebnissen"""
-        st.info(f"🔍 **Starte intelligente PubMed-Suche für:** '{query}'")
-        
-        # 1. Aktuelle Suche durchführen
-        current_papers = self._perform_current_search(query, max_results)
-        
-        if not current_papers:
-            st.error(f"❌ **Keine Papers für '{query}' gefunden!**")
-            return {"current": [], "new": [], "total_found": 0, "is_repeat_search": False}
-        
-        # 2. Prüfe ob dies eine wiederholte Suche ist
-        previous_papers = self._load_previous_search_results(query)
-        
-        if previous_papers:
-            # Wiederholte Suche - finde neue Papers
-            st.info(f"🔄 **Wiederholte Suche erkannt!** Vergleiche mit vorherigen Ergebnissen...")
-            
-            new_papers = self._find_new_papers(current_papers, previous_papers)
-            
-            if new_papers:
-                st.success(f"🆕 **{len(new_papers)} NEUE Papers gefunden** (von {len(current_papers)} gesamt)")
-                
-                # Aktualisiere Excel-Datei mit neuen Papers
-                self._update_excel_with_new_papers(query, current_papers, new_papers)
-                
-                # Sende Email mit nur neuen Papers
-                self._send_new_papers_email(query, new_papers, len(current_papers))
-                
-                return {
-                    "current": current_papers,
-                    "new": new_papers,
-                    "total_found": len(current_papers),
-                    "is_repeat_search": True,
-                    "new_count": len(new_papers)
-                }
-            else:
-                st.info(f"ℹ️ **Keine neuen Papers gefunden** - Alle {len(current_papers)} Papers waren bereits bekannt")
-                return {
-                    "current": current_papers,
-                    "new": [],
-                    "total_found": len(current_papers),
-                    "is_repeat_search": True,
-                    "new_count": 0
-                }
-        else:
-            # Erste Suche - alle Papers sind neu
-            st.success(f"🎉 **Erste Suche:** {len(current_papers)} Papers gefunden!")
-            
-            # Erstelle neue Excel-Datei
-            self._create_initial_excel_file(query, current_papers)
-            
-            # Sende Email mit allen Papers
-            self._send_initial_papers_email(query, current_papers)
-            
-            return {
-                "current": current_papers,
-                "new": current_papers,
-                "total_found": len(current_papers),
-                "is_repeat_search": False,
-                "new_count": len(current_papers)
-            }
-    
-    def _perform_current_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
-        """Führt aktuelle PubMed-Suche durch"""
-        # 1. esearch - hole PMIDs
-        pmids, total_available = self._get_pmids_with_count(query, max_results)
-        
-        if not pmids:
-            return []
-        
-        st.success(f"✅ **{len(pmids)} Papers abgerufen von {total_available:,} verfügbaren**")
-        
-        # 2. efetch - hole Details
-        papers = self._fetch_complete_paper_details(pmids)
-        
-        return papers
-    
-    def _get_pmids_with_count(self, query: str, max_results: int) -> tuple:
-        """esearch mit Anzahl-Anzeige"""
-        search_url = f"{self.base_url}esearch.fcgi"
-        params = {
-            "db": "pubmed",
-            "term": query,
-            "retmode": "json",
-            "retmax": max_results,
-            "email": self.email,
-            "tool": self.tool
+    # Sichere Session State Initialisierung
+    if "email_settings" not in st.session_state:
+        st.session_state["email_settings"] = {
+            "sender_email": "",
+            "recipient_email": "",
+            "auto_notifications": False,
+            "min_papers": 5
         }
-        
-        try:
-            response = requests.get(search_url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            pmids = data.get("esearchresult", {}).get("idlist", [])
-            total_count = int(data.get("esearchresult", {}).get("count", 0))
-            
-            st.write(f"📊 **PubMed Datenbank:** {total_count:,} Papers verfügbar für '{query}'")
-            
-            return pmids, total_count
-            
-        except Exception as e:
-            st.error(f"❌ **PubMed esearch Fehler:** {str(e)}")
-            return [], 0
     
-    def _fetch_complete_paper_details(self, pmids: List[str]) -> List[Dict[str, Any]]:
-        """Holt vollständige Paper-Details"""
-        if not pmids:
-            return []
-        
-        fetch_url = f"{self.base_url}efetch.fcgi"
-        params = {
-            "db": "pubmed",
-            "id": ",".join(pmids),
-            "retmode": "xml",
-            "email": self.email,
-            "tool": self.tool
-        }
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        try:
-            status_text.text("📥 Lade Paper-Details von PubMed...")
-            response = requests.get(fetch_url, params=params, timeout=60)
-            response.raise_for_status()
-            
-            progress_bar.progress(0.3)
-            status_text.text("🔧 Parse XML-Daten...")
-            
-            root = ET.fromstring(response.content)
-            papers = []
-            
-            articles = root.findall(".//PubmedArticle")
-            total_articles = len(articles)
-            
-            for idx, article in enumerate(articles):
-                progress = 0.3 + (idx + 1) / total_articles * 0.7
-                progress_bar.progress(progress)
-                
-                paper_data = self._parse_single_article(article)
-                if paper_data:
-                    papers.append(paper_data)
-                
-                if idx % 10 == 0:
-                    time.sleep(0.1)
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            return papers
-            
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            st.error(f"❌ **PubMed efetch Fehler:** {str(e)}")
-            return []
+    if "email_history" not in st.session_state:
+        st.session_state["email_history"] = []
     
-    def _parse_single_article(self, article) -> Dict[str, Any]:
-        """Parst einzelnen Artikel aus XML"""
-        try:
-            # PMID
-            pmid_elem = article.find(".//PMID")
-            pmid = pmid_elem.text if pmid_elem is not None else "n/a"
-            
-            # Title
-            title_elem = article.find(".//ArticleTitle")
-            title = title_elem.text if title_elem is not None else "n/a"
-            
-            # Abstract
-            abstract_parts = []
-            for abstract_elem in article.findall(".//AbstractText"):
-                if abstract_elem.text:
-                    label = abstract_elem.get("Label", "")
-                    text = abstract_elem.text
-                    if label:
-                        abstract_parts.append(f"{label}: {text}")
-                    else:
-                        abstract_parts.append(text)
-            
-            abstract = "\n".join(abstract_parts) if abstract_parts else "No abstract available"
-            
-            # Journal
-            journal_elem = article.find(".//Journal/Title")
-            journal = journal_elem.text if journal_elem is not None else "n/a"
-            
-            # Year
-            year_elem = article.find(".//PubDate/Year")
-            if year_elem is None:
-                year_elem = article.find(".//PubDate/MedlineDate")
-                if year_elem is not None:
-                    year_text = year_elem.text or ""
-                    year_match = re.search(r'\d{4}', year_text)
-                    year = year_match.group() if year_match else "n/a"
-                else:
-                    year = "n/a"
-            else:
-                year = year_elem.text
-            
-            # Authors
-            authors = []
-            for author in article.findall(".//Author"):
-                lastname = author.find("LastName")
-                forename = author.find("ForeName")
-                if lastname is not None:
-                    author_name = lastname.text or ""
-                    if forename is not None:
-                        author_name = f"{author_name}, {forename.text}"
-                    authors.append(author_name)
-            
-            authors_str = "; ".join(authors[:5])
-            if len(authors) > 5:
-                authors_str += " et al."
-            
-            # DOI
-            doi = "n/a"
-            for article_id in article.findall(".//ArticleId"):
-                if article_id.get("IdType") == "doi":
-                    doi = article_id.text
-                    break
-            
-            return {
-                "PMID": pmid,
-                "Title": title,
-                "Abstract": abstract,
-                "Journal": journal,
-                "Year": year,
-                "Authors": authors_str,
-                "DOI": doi,
-                "URL": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                "Search_Date": datetime.datetime.now().isoformat(),
-                "Selected": False,
-                "Relevance_Score": 0,
-                "Is_New": True  # Markierung für neue Papers
-            }
-            
-        except Exception as e:
-            return None
+    # Tabs für Email-Funktionen
+    tab1, tab2, tab3 = st.tabs(["📧 Konfiguration", "📋 Verlauf", "🧪 Tests"])
     
-    def _load_previous_search_results(self, query: str) -> List[Dict[str, Any]]:
-        """Lädt vorherige Suchergebnisse aus Excel-Datei"""
-        excel_filename = self._get_excel_filename(query)
-        excel_path = os.path.join(self.excel_storage_path, excel_filename)
-        
-        if not os.path.exists(excel_path):
-            return []
-        
-        try:
-            df = pd.read_excel(excel_path)
-            
-            # Konvertiere DataFrame zurück zu Dictionary-Liste
-            previous_papers = []
-            for _, row in df.iterrows():
-                paper = {
-                    "PMID": str(row.get("PMID", "")),
-                    "Title": str(row.get("Titel", "")),
-                    "Abstract": str(row.get("Abstract", "")),
-                    "Journal": str(row.get("Journal", "")),
-                    "Year": str(row.get("Jahr", "")),
-                    "Authors": str(row.get("Autoren", "")),
-                    "DOI": str(row.get("DOI", "")),
-                    "URL": str(row.get("URL", ""))
-                }
-                previous_papers.append(paper)
-            
-            st.info(f"📂 **{len(previous_papers)} vorherige Papers** aus Excel-Datei geladen")
-            return previous_papers
-            
-        except Exception as e:
-            st.warning(f"⚠️ Fehler beim Laden der Excel-Datei: {str(e)}")
-            return []
+    with tab1:
+        show_email_config()
     
-    def _find_new_papers(self, current_papers: List[Dict], previous_papers: List[Dict]) -> List[Dict]:
-        """Findet neue Papers durch Vergleich der PMIDs"""
-        previous_pmids = set(paper.get("PMID", "") for paper in previous_papers if paper.get("PMID"))
-        
-        new_papers = []
-        for paper in current_papers:
-            current_pmid = paper.get("PMID", "")
-            if current_pmid and current_pmid not in previous_pmids:
-                paper["Is_New"] = True
-                new_papers.append(paper)
-            else:
-                paper["Is_New"] = False
-        
-        return new_papers
+    with tab2:
+        show_email_history()
     
-    def _get_excel_filename(self, query: str) -> str:
-        """Generiert konsistenten Excel-Dateinamen"""
-        # Bereinige Query für Dateinamen
-        clean_query = re.sub(r'[^\w\s-]', '', query).strip()
-        clean_query = re.sub(r'[-\s]+', '_', clean_query)
-        return f"papers_{clean_query}.xlsx"
-    
-    def _create_initial_excel_file(self, query: str, papers: List[Dict]):
-        """Erstellt initiale Excel-Datei für erste Suche"""
-        excel_filename = self._get_excel_filename(query)
-        excel_path = os.path.join(self.excel_storage_path, excel_filename)
-        
-        try:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Papers"
-            
-            # Headers
-            headers = [
-                "PMID", "Titel", "Autoren", "Journal", "Jahr", "DOI", "URL", 
-                "Abstract", "Erstmals_gefunden", "Letzte_Aktualisierung"
-            ]
-            ws.append(headers)
-            
-            # Data
-            current_time = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-            
-            for paper in papers:
-                row = [
-                    paper.get("PMID", ""),
-                    paper.get("Title", ""),
-                    paper.get("Authors", ""),
-                    paper.get("Journal", ""),
-                    paper.get("Year", ""),
-                    paper.get("DOI", ""),
-                    paper.get("URL", ""),
-                    paper.get("Abstract", "")[:1000] + "..." if len(paper.get("Abstract", "")) > 1000 else paper.get("Abstract", ""),
-                    current_time,
-                    current_time
-                ]
-                ws.append(row)
-            
-            # Auto-adjust column widths
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                ws.column_dimensions[column_letter].width = adjusted_width
-            
-            wb.save(excel_path)
-            
-            st.success(f"✅ **Excel-Datei erstellt:** {excel_filename}")
-            st.info(f"📁 **Gespeichert unter:** {excel_path}")
-            
-            # Download-Button für initiale Datei
-            with open(excel_path, 'rb') as f:
-                st.download_button(
-                    label="📥 **Excel-Datei herunterladen**",
-                    data=f.read(),
-                    file_name=excel_filename,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            
-        except Exception as e:
-            st.error(f"❌ **Fehler beim Erstellen der Excel-Datei:** {str(e)}")
-    
-    def _update_excel_with_new_papers(self, query: str, all_papers: List[Dict], new_papers: List[Dict]):
-        """Aktualisiert Excel-Datei mit neuen Papers"""
-        excel_filename = self._get_excel_filename(query)
-        excel_path = os.path.join(self.excel_storage_path, excel_filename)
-        
-        try:
-            # Lade existierende Datei
-            wb = openpyxl.load_workbook(excel_path)
-            ws = wb.active
-            
-            # Füge neue Papers hinzu
-            current_time = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-            
-            for paper in new_papers:
-                row = [
-                    paper.get("PMID", ""),
-                    paper.get("Title", ""),
-                    paper.get("Authors", ""),
-                    paper.get("Journal", ""),
-                    paper.get("Year", ""),
-                    paper.get("DOI", ""),
-                    paper.get("URL", ""),
-                    paper.get("Abstract", "")[:1000] + "..." if len(paper.get("Abstract", "")) > 1000 else paper.get("Abstract", ""),
-                    current_time,  # Erstmals_gefunden
-                    current_time   # Letzte_Aktualisierung
-                ]
-                ws.append(row)
-            
-            wb.save(excel_path)
-            
-            st.success(f"✅ **Excel-Datei aktualisiert:** {len(new_papers)} neue Papers hinzugefügt")
-            
-            # Download-Button für aktualisierte Datei
-            with open(excel_path, 'rb') as f:
-                st.download_button(
-                    label="📥 **Aktualisierte Excel-Datei herunterladen**",
-                    data=f.read(),
-                    file_name=f"updated_{excel_filename}",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="updated_excel_download"
-                )
-            
-        except Exception as e:
-            st.error(f"❌ **Fehler beim Aktualisieren der Excel-Datei:** {str(e)}")
-    
-    def _send_initial_papers_email(self, query: str, papers: List[Dict]):
-        """Sendet Email für erste Suche"""
-        try:
-            from modules.email_module import trigger_email_notification
-            success = trigger_email_notification(f"Erste Suche: {query}", len(papers))
-            if success:
-                st.info(f"📧 **Email gesendet:** Erste Suche für '{query}' mit {len(papers)} Papers")
-                
-                # Zusätzliche Email-Details
-                self._create_detailed_email_notification(query, papers, is_initial=True)
-        except ImportError:
-            st.warning("📧 Email-Modul nicht verfügbar")
-    
-    def _send_new_papers_email(self, query: str, new_papers: List[Dict], total_papers: int):
-        """Sendet Email nur mit neuen Papers"""
-        try:
-            from modules.email_module import trigger_email_notification
-            success = trigger_email_notification(f"Neue Papers: {query}", len(new_papers))
-            if success:
-                st.info(f"📧 **Email gesendet:** {len(new_papers)} neue Papers für '{query}'")
-                
-                # Zusätzliche Email-Details für neue Papers
-                self._create_detailed_email_notification(query, new_papers, is_initial=False, total_papers=total_papers)
-        except ImportError:
-            st.warning("📧 Email-Modul nicht verfügbar")
-    
-    def _create_detailed_email_notification(self, query: str, papers: List[Dict], is_initial: bool = True, total_papers: int = None):
-        """Erstellt detaillierte Email-Benachrichtigung"""
-        if "email_history" not in st.session_state:
-            st.session_state["email_history"] = []
-        
-        email_type = "Erste Suche" if is_initial else "Neue Papers"
-        subject = f"🔬 {email_type}: {len(papers)} Papers für '{query}'"
-        
-        if is_initial:
-            message = f"""🔍 Erste Paper-Suche durchgeführt!
+    with tab3:
+        show_email_tests()
 
-📅 Datum: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
-🔍 Suchbegriff: '{query}'
-📊 Papers gefunden: {len(papers)}
-
-📋 Top 5 Papers:"""
-        else:
-            message = f"""🆕 Neue Papers gefunden!
-
-📅 Datum: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
-🔍 Suchbegriff: '{query}'
-📊 Neue Papers: {len(papers)}
-📊 Gesamt Papers: {total_papers}
-
-📋 Neue Papers:"""
-        
-        # Top 5 Papers zur Email hinzufügen
-        for i, paper in enumerate(papers[:5], 1):
-            message += f"""
-
-{i}. {paper.get('Title', 'Unbekannt')[:80]}...
-   Autoren: {paper.get('Authors', 'n/a')[:60]}...
-   Journal: {paper.get('Journal', 'n/a')} ({paper.get('Year', 'n/a')})
-   PMID: {paper.get('PMID', 'n/a')}"""
-        
-        if len(papers) > 5:
-            message += f"\n\n... und {len(papers) - 5} weitere Papers"
-        
-        message += f"""\n\n🔗 Vollständige Ergebnisse und Excel-Datei im System verfügbar.
-📁 Excel-Datei: papers_{re.sub(r'[^\w\s-]', '', query).strip().replace(' ', '_')}.xlsx
-
-Mit freundlichen Grüßen,
-Ihr intelligentes Paper-Suche System"""
-        
-        # Zur Email-Historie hinzufügen
-        email_notification = {
-            "timestamp": datetime.datetime.now().isoformat(),
-            "recipient": "user@example.com",
-            "subject": subject,
-            "message": message,
-            "search_term": query,
-            "paper_count": len(papers),
-            "email_type": email_type,
-            "status": "Gesendet (simuliert)"
-        }
-        
-        st.session_state["email_history"].append(email_notification)
-        
-        # Email-Vorschau anzeigen
-        with st.expander(f"📧 {email_type} Email-Vorschau anzeigen"):
-            st.write(f"**Betreff:** {subject}")
-            st.text_area("**Nachricht:**", value=message, height=300, disabled=True)
-
-def module_paper_search():
-    """Haupt-Paper-Suche Modul mit intelligenter Neu-Paper-Erkennung"""
-    st.title("🔍 **Intelligente Paper-Suche mit Neu-Paper-Erkennung**")
-    st.write("Sucht Papers, erstellt Excel-Dateien und sendet Emails mit nur **neuen** Papers!")
+def show_email_config():
+    """Email-Konfiguration Interface"""
+    st.write("**📧 Email-Einstellungen konfigurieren:**")
     
-    # Initialize Advanced Search Engine
-    search_engine = PubMedSearchEngineAdvanced()
+    settings = st.session_state.get("email_settings", {})
     
-    # Initialize Session State
-    if "paper_search_results_advanced" not in st.session_state:
-        st.session_state["paper_search_results_advanced"] = {}
-    if "paper_search_history_advanced" not in st.session_state:
-        st.session_state["paper_search_history_advanced"] = []
-    
-    # Informations-Box
-    with st.expander("ℹ️ **Wie funktioniert die intelligente Suche?**", expanded=False):
-        st.write("""
-**🎯 Funktionen:**
-• **Erste Suche:** Alle Papers werden als Excel gespeichert + Email versendet
-• **Wiederholte Suche:** Vergleich mit Excel-Datei → nur NEUE Papers per Email
-• **Automatische Excel-Updates:** Neue Papers werden zur bestehenden Datei hinzugefügt
-• **Intelligente Erkennung:** Basiert auf PMID-Vergleich
-
-**📁 Excel-Dateien werden gespeichert unter:** `saved_searches/papers_[suchbegriff].xlsx`
-        """)
-    
-    # Sidebar: Search Settings & Statistics
-    with st.sidebar:
-        st.header("🔧 Intelligente Sucheinstellungen")
-        
-        max_results = st.number_input(
-            "Max. Ergebnisse pro Suche", 
-            min_value=10, 
-            max_value=500, 
-            value=50
-        )
-        
-        st.header("📊 Such-Statistiken")
-        
-        if st.session_state["paper_search_history_advanced"]:
-            total_searches = len(st.session_state["paper_search_history_advanced"])
-            total_new_papers = sum(search.get("new_papers_count", 0) for search in st.session_state["paper_search_history_advanced"])
-            
-            st.metric("🔍 Gesamt Suchen", total_searches)
-            st.metric("🆕 Neue Papers", total_new_papers)
-            
-            # Letzte Suchen mit Neu-Paper-Info
-            st.write("**🕒 Letzte Suchen:**")
-            for search in st.session_state["paper_search_history_advanced"][-5:]:
-                repeat_icon = "🔄" if search.get("is_repeat") else "🆕"
-                st.write(f"{repeat_icon} {search['query']}: +{search.get('new_papers_count', 0)} neue")
-        else:
-            st.info("Noch keine Suchen durchgeführt")
-        
-        # Excel-Dateien anzeigen
-        st.header("📁 Gespeicherte Excel-Dateien")
-        excel_files = []
-        if os.path.exists("saved_searches"):
-            excel_files = [f for f in os.listdir("saved_searches") if f.endswith('.xlsx')]
-        
-        if excel_files:
-            st.write(f"**{len(excel_files)} Excel-Dateien:**")
-            for file in excel_files[:5]:
-                st.write(f"📄 {file}")
-        else:
-            st.info("Keine Excel-Dateien gespeichert")
-    
-    # Main Search Interface
-    st.header("🚀 **Intelligente Suche starten**")
-    
-    with st.form("advanced_paper_search_form"):
-        col1, col2 = st.columns([4, 1])
+    with st.form("email_config_form"):
+        col1, col2 = st.columns(2)
         
         with col1:
-            search_query = st.text_input(
-                "**PubMed Suchbegriff:**",
-                placeholder="z.B. 'diabetes genetics', 'BRCA1 mutations'",
-                help="Bei wiederholter Suche werden nur NEUE Papers per Email gesendet!"
+            sender_email = st.text_input(
+                "Absender Email", 
+                value=settings.get("sender_email", ""),
+                placeholder="absender@example.com"
+            )
+            
+            auto_notifications = st.checkbox(
+                "Automatische Benachrichtigungen aktivieren", 
+                value=settings.get("auto_notifications", False)
             )
         
         with col2:
-            search_button = st.form_submit_button(
-                "🔍 **INTELLIGENTE SUCHE**", 
-                type="primary", 
-                use_container_width=True
+            recipient_email = st.text_input(
+                "Empfänger Email", 
+                value=settings.get("recipient_email", ""),
+                placeholder="empfaenger@example.com"
             )
-    
-    # Execute Advanced Search
-    if search_button and search_query:
-        st.markdown("---")
-        st.subheader(f"🧠 **Intelligente Suche für:** '{search_query}'")
-        
-        with st.spinner("🔍 Führe intelligente PubMed-Suche durch..."):
-            search_result = search_engine.search_papers_with_comparison(search_query, max_results)
             
-            if search_result["total_found"] > 0:
-                # Save to search history
-                timestamp = datetime.datetime.now().isoformat()
-                
-                history_entry = {
-                    "query": search_query,
-                    "timestamp": timestamp,
-                    "total_papers": search_result["total_found"],
-                    "new_papers_count": search_result["new_count"],
-                    "is_repeat": search_result["is_repeat_search"]
-                }
-                
-                st.session_state["paper_search_history_advanced"].append(history_entry)
-                
-                # Save to results
-                st.session_state["paper_search_results_advanced"][search_query] = {
-                    "papers": search_result["current"],
-                    "new_papers": search_result["new"],
-                    "timestamp": timestamp,
-                    "is_repeat_search": search_result["is_repeat_search"]
-                }
-                
-                # Success message with different icons
-                if search_result["is_repeat_search"]:
-                    if search_result["new_count"] > 0:
-                        st.success(f"🆕 **{search_result['new_count']} NEUE Papers gefunden!** (von {search_result['total_found']} gesamt)")
-                        st.balloons()
-                    else:
-                        st.info(f"ℹ️ **Keine neuen Papers** - Alle {search_result['total_found']} Papers bereits bekannt")
-                else:
-                    st.success(f"🎉 **Erste Suche erfolgreich:** {search_result['total_found']} Papers gefunden!")
-                    st.balloons()
-                
-                # Display Results
-                display_advanced_search_results(
-                    search_result["current"], 
-                    search_result["new"],
-                    search_query, 
-                    search_result["is_repeat_search"]
-                )
-            
-            else:
-                st.error(f"❌ **Keine Papers für '{search_query}' gefunden!**")
-    
-    # Display Previous Results
-    if st.session_state["paper_search_results_advanced"] and not search_button:
-        st.markdown("---")
-        st.header("📚 **Gespeicherte Intelligente Suchergebnisse**")
+            min_papers = st.number_input(
+                "Min. Papers für Benachrichtigung", 
+                value=settings.get("min_papers", 5),
+                min_value=1,
+                max_value=100
+            )
         
-        search_tabs = st.tabs(list(st.session_state["paper_search_results_advanced"].keys()))
-        
-        for idx, (search_term, data) in enumerate(st.session_state["paper_search_results_advanced"].items()):
-            with search_tabs[idx]:
-                papers = data["papers"]
-                new_papers = data["new_papers"]
-                timestamp = data["timestamp"]
-                is_repeat = data["is_repeat_search"]
-                
-                search_type = "Wiederholte Suche" if is_repeat else "Erste Suche"
-                st.info(f"📅 {search_type} vom: {timestamp[:19]} | 📄 Papers: {len(papers)} | 🆕 Neue: {len(new_papers)}")
-                
-                display_advanced_search_results(papers, new_papers, search_term, is_repeat, show_controls=False)
-
-def display_advanced_search_results(all_papers: List[Dict], new_papers: List[Dict], search_query: str, is_repeat_search: bool, show_controls: bool = True):
-    """Zeigt erweiterte Suchergebnisse mit Neu-Paper-Hervorhebung"""
-    
-    # Advanced Statistics Dashboard
-    col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
-    
-    with col_stat1:
-        st.metric("📄 **Gesamt Papers**", len(all_papers))
-    
-    with col_stat2:
-        st.metric("🆕 **Neue Papers**", len(new_papers), delta=len(new_papers) if is_repeat_search else None)
-    
-    with col_stat3:
-        with_abstract = len([p for p in all_papers if p.get("Abstract", "") != "No abstract available"])
-        st.metric("📝 **Mit Abstract**", with_abstract)
-    
-    with col_stat4:
-        search_type = "🔄 Wiederholte Suche" if is_repeat_search else "🆕 Erste Suche"
-        st.metric("🔍 **Such-Typ**", search_type)
-    
-    # Filter: Nur neue Papers anzeigen
-    show_only_new = False
-    if is_repeat_search and new_papers:
-        show_only_new = st.checkbox(
-            f"🆕 **Nur die {len(new_papers)} neuen Papers anzeigen**", 
-            value=True, 
-            key=f"show_new_{search_query}"
+        subject_template = st.text_input(
+            "Email-Betreff Vorlage",
+            value=settings.get("subject_template", "🔬 {count} neue Papers für '{search_term}'"),
+            help="Verwenden Sie {count} und {search_term} als Platzhalter"
         )
-    
-    # Bestimme welche Papers angezeigt werden
-    display_papers = new_papers if (show_only_new and is_repeat_search) else all_papers
-    
-    if not display_papers:
-        st.info("📭 Keine Papers zum Anzeigen")
-        return
-    
-    # Paper Display
-    st.subheader(f"📋 **Papers für '{search_query}' ({'Nur neue' if show_only_new else 'Alle'})**")
-    
-    for idx, paper in enumerate(display_papers[:20]):  # Zeige max 20 Papers
-        is_new = paper.get("Is_New", False)
         
-        # Icons basierend auf Status
-        status_icon = "🆕" if is_new else "📄"
-        selected_icon = "✅" if paper.get("Selected", False) else "☐"
-        
-        # Paper Header mit Hervorhebung
-        header_style = "**🆕 NEU:**" if is_new else ""
-        header = f"{status_icon} {selected_icon} {header_style} **{idx + 1}.** {paper.get('Title', 'Unbekannter Titel')[:70]}..."
-        
-        with st.expander(header):
-            col_paper1, col_paper2 = st.columns([3, 1])
-            
-            with col_paper1:
-                # Paper Details
-                st.markdown(f"**📄 Titel:** {paper.get('Title', 'n/a')}")
-                st.markdown(f"**👥 Autoren:** {paper.get('Authors', 'n/a')}")
-                st.markdown(f"**📚 Journal:** {paper.get('Journal', 'n/a')} ({paper.get('Year', 'n/a')})")
-                st.markdown(f"**🆔 PMID:** {paper.get('PMID', 'n/a')}")
-                st.markdown(f"**🔗 DOI:** {paper.get('DOI', 'n/a')}")
-                
-                # Abstract
-                if paper.get('Abstract') and paper.get('Abstract') != "No abstract available":
-                    with st.expander("📝 Abstract anzeigen"):
-                        st.write(paper.get('Abstract', 'Kein Abstract verfügbar'))
-                
-                # Links
-                if paper.get('URL'):
-                    st.markdown(f"🔗 [**PubMed ansehen**]({paper.get('URL')})")
-            
-            with col_paper2:
-                # Neu-Status
-                if is_new:
-                    st.success("🆕 **NEUES PAPER**")
-                else:
-                    st.info("📄 Bereits bekannt")
-                
-                # Selection
-                paper["Selected"] = st.checkbox(
-                    "**Auswählen**",
-                    value=paper.get("Selected", False),
-                    key=f"adv_select_{paper.get('PMID', idx)}_{search_query}"
-                )
-                
-                # Individual Actions
-                if st.button("💾 **Speichern**", key=f"adv_save_{paper.get('PMID', idx)}"):
-                    save_individual_paper(paper, search_query, is_new)
-                
-                if st.button("📧 **Email**", key=f"adv_email_{paper.get('PMID', idx)}"):
-                    send_individual_paper_email(paper, search_query, is_new)
+        message_template = st.text_area(
+            "Email-Nachricht Vorlage",
+            value=settings.get("message_template", """🔍 Neue wissenschaftliche Papers gefunden!
 
-def save_individual_paper(paper: Dict, search_query: str, is_new: bool):
-    """Speichert einzelnes Paper mit Neu-Status"""
-    if "saved_individual_papers_advanced" not in st.session_state:
-        st.session_state["saved_individual_papers_advanced"] = []
+📅 Datum: {date}
+🔍 Suchbegriff: '{search_term}'
+📊 Anzahl Papers: {count}
+
+Die vollständigen Ergebnisse sind im Paper-Suche System verfügbar.
+
+Mit freundlichen Grüßen,
+Ihr automatisches Paper-Suche System"""),
+            height=200,
+            help="Verwenden Sie {date}, {search_term}, {count} als Platzhalter"
+        )
+        
+        if st.form_submit_button("💾 Email-Einstellungen speichern"):
+            # Speichere Einstellungen
+            st.session_state["email_settings"] = {
+                "sender_email": sender_email,
+                "recipient_email": recipient_email,
+                "auto_notifications": auto_notifications,
+                "min_papers": min_papers,
+                "subject_template": subject_template,
+                "message_template": message_template
+            }
+            
+            st.success("✅ Email-Einstellungen erfolgreich gespeichert!")
+            
+            # Zeige Vorschau
+            if sender_email and recipient_email:
+                preview = generate_email_preview(
+                    st.session_state["email_settings"], 
+                    "diabetes genetics", 
+                    7
+                )
+                st.info("📧 **Email-Vorschau:**")
+                st.code(preview, language="text")
+
+def show_email_history():
+    """Email-Verlauf anzeigen"""
+    st.write("**📊 Email-Benachrichtigungs-Verlauf:**")
     
-    paper_entry = {
-        **paper,
-        "search_query": search_query,
-        "saved_at": datetime.datetime.now().isoformat(),
-        "was_new_when_saved": is_new
+    history = st.session_state.get("email_history", [])
+    
+    if history:
+        # Statistiken
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("📧 Gesamt Emails", len(history))
+        
+        with col2:
+            today = datetime.datetime.now().date().isoformat()
+            today_count = len([h for h in history if h.get("date", "").startswith(today)])
+            st.metric("📅 Heute", today_count)
+        
+        with col3:
+            unique_terms = len(set(h.get("search_term", "") for h in history))
+            st.metric("🔍 Suchbegriffe", unique_terms)
+        
+        # Verlaufsliste
+        st.write("**📋 Letzte 10 Email-Benachrichtigungen:**")
+        
+        for i, email in enumerate(reversed(history[-10:]), 1):
+            search_term = email.get("search_term", "Unbekannt")
+            paper_count = email.get("paper_count", 0)
+            timestamp = email.get("timestamp", "Unbekannt")[:19]
+            
+            with st.expander(f"📧 {i}. {search_term} - {paper_count} Papers ({timestamp})"):
+                col_detail1, col_detail2 = st.columns(2)
+                
+                with col_detail1:
+                    st.write(f"**Suchbegriff:** {search_term}")
+                    st.write(f"**Papers gefunden:** {paper_count}")
+                    st.write(f"**Zeitstempel:** {timestamp}")
+                
+                with col_detail2:
+                    st.write(f"**An:** {email.get('recipient', 'N/A')}")
+                    st.write(f"**Status:** {email.get('status', 'N/A')}")
+                    st.write(f"**Typ:** {email.get('type', 'Standard')}")
+        
+        # Verlauf löschen
+        if st.button("🗑️ Email-Verlauf löschen"):
+            st.session_state["email_history"] = []
+            st.success("Email-Verlauf gelöscht!")
+            st.rerun()
+    
+    else:
+        st.info("📭 Noch keine Email-Benachrichtigungen versendet.")
+
+def show_email_tests():
+    """Email-Test-Funktionen"""
+    st.write("**🧪 Email-System testen:**")
+    
+    settings = st.session_state.get("email_settings", {})
+    
+    # Konfigurationsstatus
+    sender_ok = bool(settings.get("sender_email"))
+    recipient_ok = bool(settings.get("recipient_email"))
+    auto_ok = settings.get("auto_notifications", False)
+    
+    st.write("**📋 Konfigurations-Status:**")
+    
+    col_status1, col_status2 = st.columns(2)
+    
+    with col_status1:
+        st.write(f"{'✅' if sender_ok else '❌'} **Absender Email:** {'Konfiguriert' if sender_ok else 'Fehlt'}")
+        st.write(f"{'✅' if recipient_ok else '❌'} **Empfänger Email:** {'Konfiguriert' if recipient_ok else 'Fehlt'}")
+    
+    with col_status2:
+        st.write(f"{'✅' if auto_ok else '❌'} **Auto-Benachrichtigungen:** {'Aktiviert' if auto_ok else 'Deaktiviert'}")
+        st.write(f"**Min. Papers:** {settings.get('min_papers', 5)}")
+    
+    # Test-Funktionen
+    st.write("**🧪 Test-Aktionen:**")
+    
+    col_test1, col_test2, col_test3 = st.columns(3)
+    
+    with col_test1:
+        if st.button("📧 Test-Email senden"):
+            if sender_ok and recipient_ok:
+                send_test_email()
+            else:
+                st.error("❌ Email-Konfiguration unvollständig!")
+    
+    with col_test2:
+        if st.button("🔧 Konfiguration prüfen"):
+            check_configuration()
+    
+    with col_test3:
+        if st.button("📊 Statistiken anzeigen"):
+            show_statistics()
+
+def send_test_email():
+    """Sendet Test-Email (simuliert)"""
+    settings = st.session_state.get("email_settings", {})
+    
+    # Test-Email zur Historie hinzufügen
+    test_email = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "date": datetime.datetime.now().date().isoformat(),
+        "search_term": "System-Test",
+        "paper_count": 3,
+        "recipient": settings.get("recipient_email", ""),
+        "status": "Test erfolgreich (simuliert)",
+        "type": "Test"
     }
     
-    st.session_state["saved_individual_papers_advanced"].append(paper_entry)
+    if "email_history" not in st.session_state:
+        st.session_state["email_history"] = []
     
-    status = "NEUES" if is_new else "bekanntes"
-    st.success(f"💾 **{status} Paper gespeichert:** {paper.get('Title', 'Unbekannt')[:50]}...")
+    st.session_state["email_history"].append(test_email)
+    
+    st.success("✅ Test-Email erfolgreich erstellt und zur Historie hinzugefügt!")
+    
+    # Email-Vorschau anzeigen
+    preview = generate_email_preview(settings, "System-Test", 3)
+    
+    with st.expander("📧 Test-Email Vorschau anzeigen"):
+        st.code(preview, language="text")
 
-def send_individual_paper_email(paper: Dict, search_query: str, is_new: bool):
-    """Sendet Email für einzelnes Paper"""
+def generate_email_preview(settings, search_term, count):
+    """Generiert Email-Vorschau"""
     try:
-        from modules.email_module import trigger_email_notification
+        sender = settings.get("sender_email", "system@example.com")
+        recipient = settings.get("recipient_email", "user@example.com")
         
-        email_subject = f"{'Neues' if is_new else 'Einzelnes'} Paper: {paper.get('Title', 'Unknown')[:30]}..."
-        success = trigger_email_notification(email_subject, 1)
+        subject_template = settings.get("subject_template", "Neue Papers für '{search_term}'")
+        subject = subject_template.format(count=count, search_term=search_term)
         
-        if success:
-            status = "NEUES" if is_new else "Paper"
-            st.success(f"📧 **Email gesendet** für {status}: {paper.get('Title', 'Unknown')[:40]}...")
-        else:
-            st.info("📧 Email-Benachrichtigung erstellt (simuliert)")
-    except:
-        st.info("📧 Email-Funktionalität nicht verfügbar")
+        message_template = settings.get("message_template", "Es wurden {count} neue Papers gefunden.")
+        message = message_template.format(
+            date=datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            search_term=search_term,
+            count=count
+        )
+        
+        return f"""Von: {sender}
+An: {recipient}
+Betreff: {subject}
 
-# Zusätzliche Hilfsfunktionen (gleich wie vorher, aber mit "advanced" Suffix)
-def sort_papers(papers: List[Dict], sort_option: str) -> List[Dict]:
-    """Sortiert Papers nach gewählter Option"""
+{message}"""
+    
+    except Exception as e:
+        return f"Email-Vorschau Fehler: {str(e)}"
+
+def check_configuration():
+    """Prüft Email-Konfiguration"""
+    settings = st.session_state.get("email_settings", {})
+    
+    st.write("**🔍 Detaillierte Konfigurationsprüfung:**")
+    
+    checks = [
+        ("Absender Email", bool(settings.get("sender_email"))),
+        ("Empfänger Email", bool(settings.get("recipient_email"))),
+        ("Betreff-Vorlage", bool(settings.get("subject_template"))),
+        ("Nachricht-Vorlage", bool(settings.get("message_template"))),
+        ("Auto-Benachrichtigungen", settings.get("auto_notifications", False))
+    ]
+    
+    all_configured = True
+    for check_name, is_configured in checks:
+        icon = "✅" if is_configured else "❌"
+        status = "OK" if is_configured else "Fehlt/Deaktiviert"
+        st.write(f"{icon} **{check_name}:** {status}")
+        
+        if not is_configured and check_name in ["Absender Email", "Empfänger Email"]:
+            all_configured = False
+    
+    if all_configured:
+        st.success("🎉 **Email-System ist vollständig konfiguriert und einsatzbereit!**")
+    else:
+        st.warning("⚠️ **Email-System benötigt noch Konfiguration.**")
+
+def show_statistics():
+    """Zeigt Email-Statistiken"""
+    history = st.session_state.get("email_history", [])
+    settings = st.session_state.get("email_settings", {})
+    
+    st.write("**📊 Email-System Statistiken:**")
+    
+    if history:
+        total_emails = len(history)
+        total_papers = sum(email.get("paper_count", 0) for email in history)
+        avg_papers = total_papers / total_emails if total_emails > 0 else 0
+        
+        col_stat1, col_stat2, col_stat3 = st.columns(3)
+        
+        with col_stat1:
+            st.metric("📧 Gesamt Emails", total_emails)
+        
+        with col_stat2:
+            st.metric("📄 Gesamt Papers", total_papers)
+        
+        with col_stat3:
+            st.metric("📊 Ø Papers/Email", f"{avg_papers:.1f}")
+        
+        # Zeitstatistiken
+        if total_emails > 1:
+            first_email = min(email.get("timestamp", "") for email in history)
+            last_email = max(email.get("timestamp", "") for email in history)
+            
+            st.write(f"**📅 Erste Email:** {first_email[:19] if first_email else 'N/A'}")
+            st.write(f"**📅 Letzte Email:** {last_email[:19] if last_email else 'N/A'}")
+    
+    else:
+        st.info("📭 Keine Email-Statistiken verfügbar - noch keine Emails versendet.")
+    
+    # Konfigurationsstatistiken
+    st.write("**⚙️ Konfiguration:**")
+    st.write(f"• **Auto-Benachrichtigungen:** {'Aktiviert' if settings.get('auto_notifications') else 'Deaktiviert'}")
+    st.write(f"• **Min. Papers Schwelle:** {settings.get('min_papers', 5)}")
+
+# Integration-Funktionen für andere Module
+def trigger_email_notification(search_term, paper_count):
+    """Wird von anderen Modulen aufgerufen um Email-Benachrichtigungen zu senden"""
     try:
-        if sort_option == "Jahr (neu-alt)":
-            return sorted(papers, key=lambda x: int(x.get("Year", "0")) if x.get("Year", "0").isdigit() else 0, reverse=True)
-        elif sort_option == "Jahr (alt-neu)":
-            return sorted(papers, key=lambda x: int(x.get("Year", "0")) if x.get("Year", "0").isdigit() else 0)
-        elif sort_option == "Titel":
-            return sorted(papers, key=lambda x: x.get("Title", "").lower())
-        elif sort_option == "Neu zuerst":
-            return sorted(papers, key=lambda x: x.get("Is_New", False), reverse=True)
-        else:  # Relevanz (Standard)
-            return papers
-    except:
-        return papers
+        settings = st.session_state.get("email_settings", {})
+        
+        # Prüfe ob Auto-Benachrichtigungen aktiviert sind
+        if not settings.get("auto_notifications", False):
+            return False
+        
+        # Prüfe ob Mindest-Paper-Anzahl erreicht ist
+        min_papers = settings.get("min_papers", 5)
+        if paper_count < min_papers:
+            return False
+        
+        # Erstelle Email-Benachrichtigung
+        email_notification = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "date": datetime.datetime.now().date().isoformat(),
+            "search_term": search_term,
+            "paper_count": paper_count,
+            "recipient": settings.get("recipient_email", ""),
+            "status": "Automatisch gesendet (simuliert)",
+            "type": "Automatisch"
+        }
+        
+        # Zur Historie hinzufügen
+        if "email_history" not in st.session_state:
+            st.session_state["email_history"] = []
+        
+        st.session_state["email_history"].append(email_notification)
+        
+        return True
+    
+    except Exception:
+        return False
+
+def get_email_settings():
+    """Gibt aktuelle Email-Einstellungen zurück"""
+    return st.session_state.get("email_settings", {})
+
+def is_email_enabled():
+    """Prüft ob Email-System aktiviert und konfiguriert ist"""
+    settings = st.session_state.get("email_settings", {})
+    return (settings.get("auto_notifications", False) and 
+            bool(settings.get("sender_email")) and 
+            bool(settings.get("recipient_email")))
