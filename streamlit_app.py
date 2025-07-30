@@ -904,7 +904,7 @@ Only output this JSON, no further explanation:
             # FIX: Properly handle code block cleanup
             if json_str.startswith("```"):
                 json_str = re.sub(r"```[\w]*\n?", "", json_str)
-                json_str = re.sub(r"\n?```
+                json_str = re.sub(r"\n?```", "", json_str)
             try:
                 data_parsed = json.loads(json_str)
                 main_theme = data_parsed.get("main_theme", "No theme extracted.")
