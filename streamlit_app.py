@@ -840,7 +840,7 @@ Only return the JSON, no extra explanation.
             st.markdown("#### GPT-Output (Outlier-Check / Manual):")
             st.code(scope_decision, language="json")
             json_str = scope_decision.strip()
-            if json_str.startswith("```"):
+            if json_str.startswith("```
                 json_str = re.sub(r"```[\w]*\n?", "", json_str)
                 json_str = re.sub(r"\n?```
             try:
