@@ -224,7 +224,7 @@ def fetch_pubmed_abstract(pmid):
     except Exception as e:
         return f"(Error: {e})"
 
-def fetch_pubmed_doi_and_link(pmid: str) -> (str, str):
+def fetch_pubmed_doi_and_link(pmid: str) -> tuple:
     """
     Attempts to retrieve the DOI and PubMed link for a given PMID via E-Summary/E-Fetch.
     Returns (doi, pubmed_link). If no DOI is found, returns ("n/a", link).
@@ -346,6 +346,7 @@ def search_openalex_simple(query):
 class GoogleScholarSearch:
     def __init__(self):
         self.all_results = []
+    
     def search_google_scholar(self, base_query):
         try:
             search_results = scholarly.search_pubs(base_query)
@@ -388,6 +389,7 @@ def check_semantic_scholar_connection(timeout=10):
 class SemanticScholarSearch:
     def __init__(self):
         self.all_results = []
+    
     def search_semantic_scholar(self, base_query):
         try:
             url = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -417,222 +419,6 @@ class SemanticScholarSearch:
                 })
         except Exception as e:
             st.error(f"Semantic Scholar: {e}")
-
-# ------------------------------------------------------------------
-# 7) Chronk Modul - NEU HINZUGEFÜGT
-# ------------------------------------------------------------------
-class ChronkProcessor:
-    """
-    Chronk Modul für die Verarbeitung und Analyse von chronologischen Daten
-    """
-    def __init__(self):
-        self.chronk_data = []
-        self.processed_results = []
-    
-    def process_chronk_data(self, input_data):
-        """Verarbeitet chronologische Daten"""
-        try:
-            # Beispiel-Verarbeitung für Chronk-Daten
-            if isinstance(input_data, str):
-                # Text-basierte Chronk-Verarbeitung
-                lines = input_data.strip().split('\n')
-                for line in lines:
-                    if line.strip():
-                        self.chronk_data.append({
-                            'timestamp': datetime.datetime.now(),
-                            'data': line.strip(),
-                            'processed': True
-                        })
-            elif isinstance(input_data, list):
-                # Listen-basierte Verarbeitung
-                for item in input_data:
-                    self.chronk_data.append({
-                        'timestamp': datetime.datetime.now(),
-                        'data': str(item),
-                        'processed': True
-                    })
-            return True
-        except Exception as e:
-            st.error(f"Chronk processing error: {e}")
-            return False
-    
-    def analyze_chronk_patterns(self):
-        """Analysiert chronologische Muster in den Daten"""
-        if not self.chronk_data:
-            return "Keine Chronk-Daten zum Analysieren verfügbar."
-        
-        analysis_result = {
-            'total_entries': len(self.chronk_data),
-            'processed_entries': sum(1 for item in self.chronk_data if item['processed']),
-            'time_range': {
-                'start': min(item['timestamp'] for item in self.chronk_data),
-                'end': max(item['timestamp'] for item in self.chronk_data)
-            },
-            'data_types': list(set(type(item['data']).__name__ for item in self.chronk_data))
-        }
-        
-        return analysis_result
-    
-    def export_chronk_results(self):
-        """Exportiert Chronk-Ergebnisse als DataFrame"""
-        if not self.chronk_data:
-            return pd.DataFrame()
-        
-        df_data = []
-        for item in self.chronk_data:
-            df_data.append({
-                'Timestamp': item['timestamp'],
-                'Data': item['data'],
-                'Processed': item['processed']
-            })
-        
-        return pd.DataFrame(df_data)
-
-def module_chronk():
-    """Hauptmodul für Chronk-Funktionalität"""
-    st.subheader("Chronk Modul")
-    st.write("Dieses Modul verarbeitet und analysiert chronologische Daten.")
-    
-    # Chronk Processor initialisieren
-    if 'chronk_processor' not in st.session_state:
-        st.session_state['chronk_processor'] = ChronkProcessor()
-    
-    processor = st.session_state['chronk_processor']
-    
-    # Input-Optionen
-    input_method = st.radio("Eingabemethode wählen:", 
-                           ["Text eingeben", "Datei hochladen", "Beispieldaten laden"])
-    
-    if input_method == "Text eingeben":
-        user_input = st.text_area("Chronk-Daten eingeben:", height=200)
-        if st.button("Daten verarbeiten"):
-            if user_input.strip():
-                success = processor.process_chronk_data(user_input)
-                if success:
-                    st.success("Chronk-Daten erfolgreich verarbeitet!")
-                else:
-                    st.error("Fehler bei der Verarbeitung der Chronk-Daten.")
-    
-    elif input_method == "Datei hochladen":
-        uploaded_file = st.file_uploader("Chronk-Datei hochladen", type=['txt', 'csv', 'json'])
-        if uploaded_file is not None:
-            try:
-                file_content = uploaded_file.read().decode('utf-8')
-                if st.button("Datei verarbeiten"):
-                    success = processor.process_chronk_data(file_content)
-                    if success:
-                        st.success("Chronk-Datei erfolgreich verarbeitet!")
-            except Exception as e:
-                st.error(f"Fehler beim Lesen der Datei: {e}")
-    
-    elif input_method == "Beispieldaten laden":
-        if st.button("Beispieldaten laden und verarbeiten"):
-            sample_data = [
-                "Sample chronk entry 1",
-                "Sample chronk entry 2", 
-                "Sample chronk entry 3"
-            ]
-            success = processor.process_chronk_data(sample_data)
-            if success:
-                st.success("Beispiel-Chronk-Daten geladen und verarbeitet!")
-    
-    # Analyse-Sektion
-    st.write("---")
-    st.subheader("Chronk-Analyse")
-    
-    if st.button("Chronk-Muster analysieren"):
-        analysis = processor.analyze_chronk_patterns()
-        if isinstance(analysis, dict):
-            st.write("**Analyse-Ergebnisse:**")
-            st.json(analysis)
-        else:
-            st.info(analysis)
-    
-    # Export-Sektion
-    if st.button("Chronk-Ergebnisse exportieren"):
-        df_results = processor.export_chronk_results()
-        if not df_results.empty:
-            st.write("**Exportierte Chronk-Daten:**")
-            st.dataframe(df_results)
-            
-            # CSV-Download anbieten
-            csv = df_results.to_csv(index=False)
-            st.download_button(
-                label="Als CSV herunterladen",
-                data=csv,
-                file_name=f"chronk_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime='text/csv'
-            )
-        else:
-            st.info("Keine Daten zum Exportieren verfügbar.")
-
-def page_chronk():
-    """Seite für das Chronk-Modul"""
-    st.title("Chronk Modul")
-    module_chronk()
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-# ------------------------------------------------------------------
-# 8) Weitere Module + Seiten
-# ------------------------------------------------------------------
-def module_paperqa2():
-    st.subheader("PaperQA2 Module")
-    st.write("This is the PaperQA2 module. You can add more settings and functions here.")
-    question = st.text_input("Please enter your question:")
-    if st.button("Submit question"):
-        st.write("Answer: This is a dummy answer to the question:", question)
-
-def page_home():
-    st.title("Welcome to the Main Menu")
-    st.write("Choose a module in the sidebar to proceed.")
-    try:
-        st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
-    except:
-        st.info("Welcome image not found, but system is ready!")
-
-def page_codewords_pubmed():
-    st.title("Codewords & PubMed Settings")
-    from modules.codewords_pubmed import module_codewords_pubmed
-    module_codewords_pubmed()
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_paper_selection():
-    st.title("Paper Selection Settings")
-    st.write("Define how you want to pick or exclude certain papers. (Dummy placeholder...)")
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_analysis():
-    st.title("Analysis & Evaluation Settings")
-    st.write("Set up your analysis parameters, thresholds, etc. (Dummy placeholder...)")
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_extended_topics():
-    st.title("Extended Topics")
-    st.write("Access advanced or extended topics for further research. (Dummy placeholder...)")
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_paperqa2():
-    st.title("PaperQA2")
-    module_paperqa2()
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
-
-def page_excel_online_search():
-    st.title("Excel Online Search")
-    # Placeholder, or import existing code if needed
-
-def page_online_api_filter():
-    st.title("Online-API_Filter (Combined)")
-    st.write("Here, you can combine API selection and filtering in one step.")
-    from modules.online_api_filter import module_online_api_filter
-    module_online_api_filter()
-    if st.button("Back to Main Menu"):
-        st.session_state["current_page"] = "Home"
 
 # ------------------------------------------------------------------
 # Important Classes for Analysis
@@ -900,6 +686,65 @@ Hier die Claims:
         return f"Fehler bei Gemeinsamkeiten/Widersprüche: {e}"
 
 # ------------------------------------------------------------------
+# Module Imports
+# ------------------------------------------------------------------
+def module_paperqa2():
+    st.subheader("PaperQA2 Module")
+    st.write("This is the PaperQA2 module. You can add more settings and functions here.")
+    question = st.text_input("Please enter your question:")
+    if st.button("Submit question"):
+        st.write("Answer: This is a dummy answer to the question:", question)
+
+# ------------------------------------------------------------------
+# Page Functions
+# ------------------------------------------------------------------
+def page_home():
+    st.title("Welcome to the Main Menu")
+    st.write("Choose a module in the sidebar to proceed.")
+    try:
+        st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
+    except:
+        st.info("Welcome image not found, but system is ready!")
+
+def page_codewords_pubmed():
+    st.title("Codewords & PubMed Settings")
+    try:
+        from modules.codewords_pubmed import module_codewords_pubmed
+        module_codewords_pubmed()
+    except ImportError:
+        st.error("Module 'codewords_pubmed' not found. Please check modules/codewords_pubmed.py")
+    if st.button("Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
+
+def page_chonkie():
+    """Seite für das Chonkie Scientific Analysis Modul"""
+    st.title("Chonkie Scientific Analysis")
+    try:
+        from modules.chonkie_scientific_analysis import module_chonkie_scientific_analysis
+        module_chonkie_scientific_analysis()
+    except ImportError:
+        st.error("Module 'chonkie_scientific_analysis' not found. Please check modules/chonkie_scientific_analysis.py")
+    if st.button("Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
+
+def page_online_api_filter():
+    st.title("Online-API_Filter (Combined)")
+    st.write("Here, you can combine API selection and filtering in one step.")
+    try:
+        from modules.online_api_filter import module_online_api_filter
+        module_online_api_filter()
+    except ImportError:
+        st.error("Module 'online_api_filter' not found. Please check modules/online_api_filter.py")
+    if st.button("Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
+
+def page_paperqa2():
+    st.title("PaperQA2")
+    module_paperqa2()
+    if st.button("Back to Main Menu"):
+        st.session_state["current_page"] = "Home"
+
+# ------------------------------------------------------------------
 # Page: Analyze Paper (inkl. PaperQA Multi-Paper Analyzer)
 # ------------------------------------------------------------------
 def page_analyze_paper():
@@ -949,7 +794,7 @@ def page_analyze_paper():
     if "theme_compare" not in st.session_state:
         st.session_state["theme_compare"] = ""
     
-    def do_outlier_logic(paper_map: dict) -> (list, str):
+    def do_outlier_logic(paper_map: dict) -> tuple:
         """Determines which papers are thematically relevant and possibly a shared main theme."""
         if theme_mode == "Manually":
             main_theme = user_defined_theme.strip()
@@ -1349,7 +1194,7 @@ def sidebar_module_navigation():
         "Home": page_home,
         "Online-API_Filter": page_online_api_filter,
         "Codewords & PubMed": page_codewords_pubmed,
-        "Chronk Modul": page_chronk,
+        "Chonkie Scientific Analysis": page_chonkie,
         "Analyze Paper": page_analyze_paper,
     }
 
