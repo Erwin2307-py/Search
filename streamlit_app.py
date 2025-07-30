@@ -87,9 +87,9 @@ def translate_text_openai(text, source_language, target_language, api_key):
             ],
             temperature=0
         )
-        translation = response.choices[0].message.content.strip()
+        translation = response.choices.message.content.strip()
         # Removes leading/trailing quotes
-        if translation and translation[0] in ["'", '"', "'", "„"]:
+        if translation and translation in ["'", '"', "'", "„"]:
             translation = translation[1:]
             if translation and translation[-1] in ["'", '"']:
                 translation = translation[:-1]
@@ -245,7 +245,7 @@ def fetch_pubmed_doi_and_link(pmid: str) -> tuple:
         result_obj = data.get("result", {}).get(pmid, {})
         eloc = result_obj.get("elocationid", "")
         if eloc and eloc.startswith("doi:"):
-            doi_ = eloc.split("doi:", 1)[1].strip()
+            doi_ = eloc.split("doi:", 1)[3].strip()
             if doi_:
                 return (doi_, link)
     except Exception:
@@ -453,7 +453,7 @@ class PaperAnalyzer:
             temperature=0.3,
             max_tokens=1500
         )
-        return response.choices[0].message.content
+        return response.choices.message.content
     
     def summarize(self, text, api_key):
         """Creates a summary in German."""
@@ -561,7 +561,7 @@ Give me a number from 0 to 100 (relevance), taking both codewords and genes into
                 max_tokens=20,
                 temperature=0
             )
-            raw_text = resp.choices[0].message.content.strip()
+            raw_text = resp.choices.message.content.strip()
             match = re.search(r'(\d+)', raw_text)
             if match:
                 score = int(match.group(1))
@@ -605,7 +605,7 @@ Text: {txt[:6000]}
                 temperature=0.3,
                 max_tokens=700
             )
-            raw = resp_claims.choices[0].message.content.strip()
+            raw = resp_claims.choices.message.content.strip()
             try:
                 claims_list = json.loads(raw)
             except Exception:
@@ -680,7 +680,7 @@ Hier die Claims:
             temperature=0.0,
             max_tokens=1500
         )
-        raw2 = resp_final.choices[0].message.content.strip()
+        raw2 = resp_final.choices.message.content.strip()
         return raw2
     except Exception as e:
         return f"Fehler bei Gemeinsamkeiten/Widersprüche: {e}"
@@ -833,16 +833,17 @@ Only return the JSON, no extra explanation.
                     temperature=0.0,
                     max_tokens=1800
                 )
-                scope_decision = scope_resp.choices[0].message.content
+                scope_decision = scope_resp.choices.message.content
             except Exception as e1:
                 st.error(f"GPT error in Compare-Mode (Manual): {e1}")
                 return ([], "")
             st.markdown("#### GPT-Output (Outlier-Check / Manual):")
             st.code(scope_decision, language="json")
             json_str = scope_decision.strip()
-            if json_str.startswith("```
-                json_str = re.sub(r"```[\w]*\n?", "", json_str)
-                 json_str = re.sub(r"\n?```$", "", json_str)  
+            # FIX: Properly handle code block cleanup
+            if json_str.startswith("```"):
+                json_str = re.sub(r"```
+                json_str = re.sub(r"\n?```", "", json_str)
             try:
                 data_parsed = json.loads(json_str)
                 papers_info = data_parsed.get("papers", [])
@@ -893,16 +894,17 @@ Only output this JSON, no further explanation:
                     temperature=0.0,
                     max_tokens=1800
                 )
-                scope_decision = scope_resp.choices.message.content
+                scope_decision = scope_resp.choices[0].message.content
             except Exception as e1:
                 st.error(f"GPT error in Compare-Mode: {e1}")
                 return ([], "")
             st.markdown("#### GPT-Output (Outlier-Check / GPT):")
             st.code(scope_decision, language="json")
             json_str = scope_decision.strip()
-            if json_str.startswith("```"):
-                json_str = re.sub(r"```
-                json_str = re.sub(r"\n?```", "", json_str)
+            # FIX: Properly handle code block cleanup
+            if json_str.startswith("```
+                json_str = re.sub(r"```[\w]*\n?", "", json_str)
+                json_str = re.sub(r"\n?```
             try:
                 data_parsed = json.loads(json_str)
                 main_theme = data_parsed.get("main_theme", "No theme extracted.")
@@ -1028,12 +1030,12 @@ Only output this JSON, no further explanation:
                                                     if not table_data:
                                                         st.write("Empty table detected.")
                                                         continue
-                                                    first_row = table_data[0]
+                                                    first_row = table_data
                                                     data_rows = table_data[1:]
                                                     if not data_rows:
                                                         st.write("Only a header present.")
                                                         data_rows = table_data
-                                                        first_row = [f"Col_{i}" for i in range(len(data_rows[0]))]
+                                                        first_row = [f"Col_{i}" for i in range(len(data_rows))]
                                                     import pandas as pd
                                                     new_header = []
                                                     used_cols = {}
@@ -1111,7 +1113,7 @@ Only output this JSON, no further explanation:
                                                 temperature=0.3,
                                                 max_tokens=1000
                                             )
-                                            result = gpt_resp.choices[0].message.content
+                                            result = gpt_resp.choices.message.content
                                         except Exception as e2:
                                             st.error(f"Error in GPT table analysis: {str(e2)}")
                                             result = "(Error in GPT evaluation.)"
@@ -1231,13 +1233,13 @@ def answer_chat(question: str) -> str:
             temperature=0.3,
             max_tokens=400
         )
-        return response.choices[0].message.content
+        return response.choices.message.content
     except Exception as e:
         return f"OpenAI error: {e}"
 
 def main():
     # -------- LAYOUT: Left Modules, Right Chatbot --------
-    col_left, col_right = st.columns([4, 1])
+    col_left, col_right = st.columns([4][3])
     
     with col_left:
         # Navigation
