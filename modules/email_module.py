@@ -1,4 +1,4 @@
-# modules/email_module.py - ERWEITERTE VERSION MIT PAPER-SUCHE
+# modules/email_module.py - VOLLSTÄNDIGE VERSION MIT ECHTER EMAIL-FUNKTIONALITÄT
 import streamlit as st
 import datetime
 import requests
@@ -9,17 +9,23 @@ import re
 import io
 import openpyxl
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+import ssl
 from typing import List, Dict, Any
 
 def module_email():
-    """ERWEITERTE FUNKTION - Email-Modul mit integrierter Paper-Suche"""
+    """VOLLSTÄNDIGE FUNKTION - Email-Modul mit echter SMTP-Funktionalität"""
     st.subheader("📧 Email-System mit integrierter Paper-Suche")
-    st.success("✅ Erweitertes Email- und Paper-Suche-Modul geladen!")
+    st.success("✅ Vollständiges Email- und Paper-Suche-Modul mit echter SMTP-Funktionalität geladen!")
     
-    # Sichere Session State Initialisierung
+    # Session State initialisieren
     initialize_session_state()
     
-    # Erweiterte Tabs mit Paper-Suche
+    # Erweiterte Tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📧 Email-Konfiguration", 
         "🔍 Paper-Suche", 
@@ -44,7 +50,7 @@ def module_email():
         show_email_tests()
 
 def initialize_session_state():
-    """Erweiterte Session State Initialisierung"""
+    """Vollständige Session State Initialisierung"""
     if "email_settings" not in st.session_state:
         st.session_state["email_settings"] = {
             "sender_email": "",
@@ -61,7 +67,11 @@ def initialize_session_state():
 Die vollständigen Ergebnisse sind im Paper-Suche System verfügbar.
 
 Mit freundlichen Grüßen,
-Ihr automatisches Paper-Suche System"""
+Ihr automatisches Paper-Suche System""",
+            "smtp_server": "smtp.gmail.com",
+            "smtp_port": 587,
+            "sender_password": "",
+            "use_tls": True
         }
     
     if "email_history" not in st.session_state:
@@ -77,21 +87,24 @@ Ihr automatisches Paper-Suche System"""
     if not os.path.exists("saved_searches"):
         os.makedirs("saved_searches")
 
-# EMAIL-KONFIGURATION (wie vorher)
 def show_email_config():
-    """Email-Konfiguration Interface"""
+    """Vollständige Email-Konfiguration mit SMTP"""
     st.write("**📧 Email-Einstellungen konfigurieren:**")
     
     settings = st.session_state.get("email_settings", {})
     
+    # Email-Setup Hilfe anzeigen
+    show_email_setup_help()
+    
     with st.form("email_config_form"):
+        st.subheader("📬 Grundeinstellungen")
         col1, col2 = st.columns(2)
         
         with col1:
             sender_email = st.text_input(
                 "Absender Email", 
                 value=settings.get("sender_email", ""),
-                placeholder="absender@example.com"
+                placeholder="absender@gmail.com"
             )
             
             auto_notifications = st.checkbox(
@@ -113,6 +126,40 @@ def show_email_config():
                 max_value=100
             )
         
+        # SMTP-Einstellungen
+        st.subheader("🔧 SMTP-Server Einstellungen")
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            smtp_server = st.text_input(
+                "SMTP Server",
+                value=settings.get("smtp_server", "smtp.gmail.com"),
+                placeholder="smtp.gmail.com"
+            )
+            
+            smtp_port = st.number_input(
+                "SMTP Port",
+                value=settings.get("smtp_port", 587),
+                min_value=1,
+                max_value=65535
+            )
+        
+        with col4:
+            sender_password = st.text_input(
+                "Email Passwort / App-Passwort",
+                value=settings.get("sender_password", ""),
+                type="password",
+                placeholder="Ihr Email-Passwort",
+                help="Für Gmail verwenden Sie ein App-spezifisches Passwort"
+            )
+            
+            use_tls = st.checkbox(
+                "TLS verwenden (empfohlen)",
+                value=settings.get("use_tls", True)
+            )
+        
+        # Email-Vorlagen
+        st.subheader("📝 Email-Vorlagen")
         subject_template = st.text_input(
             "Email-Betreff Vorlage",
             value=settings.get("subject_template", "🔬 {count} neue Papers für '{search_term}'"),
@@ -131,8 +178,7 @@ Die vollständigen Ergebnisse sind im Paper-Suche System verfügbar.
 
 Mit freundlichen Grüßen,
 Ihr automatisches Paper-Suche System"""),
-            height=200,
-            help="Verwenden Sie {date}, {search_term}, {count} als Platzhalter"
+            height=200
         )
         
         if st.form_submit_button("💾 Email-Einstellungen speichern"):
@@ -142,7 +188,11 @@ Ihr automatisches Paper-Suche System"""),
                 "auto_notifications": auto_notifications,
                 "min_papers": min_papers,
                 "subject_template": subject_template,
-                "message_template": message_template
+                "message_template": message_template,
+                "smtp_server": smtp_server,
+                "smtp_port": smtp_port,
+                "sender_password": sender_password,
+                "use_tls": use_tls
             }
             
             st.success("✅ Email-Einstellungen erfolgreich gespeichert!")
@@ -156,21 +206,116 @@ Ihr automatisches Paper-Suche System"""),
                 st.info("📧 **Email-Vorschau:**")
                 st.code(preview, language="text")
 
-# NEUE PAPER-SUCHE FUNKTIONALITÄT
+def show_email_setup_help():
+    """Zeigt Hilfe für Email-Setup"""
+    with st.expander("📖 Email-Setup Hilfe (WICHTIG LESEN!)"):
+        st.info("""
+        📧 **Email-Setup Anleitung:**
+        
+        **Für Gmail:**
+        1. ✅ Aktivieren Sie 2-Faktor-Authentifizierung in Ihrem Google Account
+        2. ✅ Erstellen Sie ein App-spezifisches Passwort:
+           - Gehen Sie zu Google Account → Sicherheit → App-Passwörter
+           - Wählen Sie "E-Mail" und Ihr Gerät
+           - Kopieren Sie das generierte 16-stellige Passwort
+        3. ✅ Verwenden Sie: smtp.gmail.com, Port 587, TLS aktiviert
+        4. ⚠️ Verwenden Sie NICHT Ihr normales Gmail-Passwort!
+        
+        **Für Outlook/Hotmail:**
+        - SMTP: smtp-mail.outlook.com
+        - Port: 587
+        - TLS: Aktiviert
+        - Passwort: Ihr normales Outlook-Passwort
+        
+        **Für GMX:**
+        - SMTP: mail.gmx.net
+        - Port: 587
+        - TLS: Aktiviert
+        
+        **Für Web.de:**
+        - SMTP: smtp.web.de
+        - Port: 587
+        - TLS: Aktiviert
+        
+        **⚠️ Wichtige Sicherheitshinweise:**
+        - Verwenden Sie niemals Ihr Hauptpasswort in Apps
+        - App-Passwörter sind sicherer und empfohlen
+        - Testen Sie erst mit der Test-Email-Funktion
+        """)
+
+def send_real_email(to_email: str, subject: str, message: str, attachment_path: str = None) -> tuple[bool, str]:
+    """Sendet echte Email über SMTP"""
+    settings = st.session_state.get("email_settings", {})
+    
+    sender_email = settings.get("sender_email", "")
+    sender_password = settings.get("sender_password", "")
+    smtp_server = settings.get("smtp_server", "smtp.gmail.com")
+    smtp_port = settings.get("smtp_port", 587)
+    use_tls = settings.get("use_tls", True)
+    
+    # Validierung
+    if not all([sender_email, sender_password, to_email]):
+        return False, "❌ Email-Konfiguration unvollständig (Email/Passwort fehlt)"
+    
+    try:
+        # Email zusammenstellen
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        
+        # Nachricht hinzufügen
+        msg.attach(MIMEText(message, 'plain', 'utf-8'))
+        
+        # Optional: Attachment hinzufügen
+        if attachment_path and os.path.exists(attachment_path):
+            with open(attachment_path, "rb") as attachment:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename= {os.path.basename(attachment_path)}'
+                )
+                msg.attach(part)
+        
+        # SMTP-Verbindung
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        
+        if use_tls:
+            context = ssl.create_default_context()
+            server.starttls(context=context)
+        
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+        
+        return True, "✅ Email erfolgreich gesendet"
+        
+    except smtplib.SMTPAuthenticationError:
+        return False, "❌ SMTP-Authentifizierung fehlgeschlagen - Prüfen Sie Email/Passwort"
+    except smtplib.SMTPRecipientsRefused:
+        return False, "❌ Empfänger-Email ungültig"
+    except smtplib.SMTPServerDisconnected:
+        return False, "❌ SMTP-Server-Verbindung unterbrochen"
+    except Exception as e:
+        return False, f"❌ Email-Fehler: {str(e)}"
+
 def show_paper_search():
-    """Integrierte Paper-Suche mit Email-Benachrichtigung"""
+    """Vollständige Paper-Suche mit Email-Integration"""
     st.write("**🔍 Paper-Suche mit automatischer Email-Benachrichtigung**")
     
     # Email-Status anzeigen
     settings = st.session_state.get("email_settings", {})
     email_enabled = (settings.get("auto_notifications", False) and 
                     bool(settings.get("sender_email")) and 
-                    bool(settings.get("recipient_email")))
+                    bool(settings.get("recipient_email")) and
+                    bool(settings.get("sender_password")))
     
     if email_enabled:
-        st.success("✅ **Email-Benachrichtigungen sind aktiviert**")
+        st.success("✅ **Email-Benachrichtigungen sind aktiviert und konfiguriert**")
     else:
-        st.warning("⚠️ **Email-Benachrichtigungen sind deaktiviert** - Konfigurieren Sie sie im Tab 'Email-Konfiguration'")
+        st.warning("⚠️ **Email-Benachrichtigungen sind deaktiviert oder unvollständig** - Konfigurieren Sie sie im Tab 'Email-Konfiguration'")
     
     # Such-Interface
     with st.form("paper_search_form"):
@@ -222,7 +367,7 @@ def show_paper_search():
         execute_paper_search(search_query, max_results, date_filter, send_email_override)
 
 def execute_paper_search(query: str, max_results: int, date_filter: str, force_email: bool):
-    """Führt PubMed-Suche durch mit Email-Integration"""
+    """Führt PubMed-Suche durch mit vollständiger Email-Integration"""
     st.markdown("---")
     st.subheader(f"🔍 **Suche nach:** '{query}'")
     
@@ -252,7 +397,7 @@ def execute_paper_search(query: str, max_results: int, date_filter: str, force_e
                 st.success(f"🆕 **{len(new_papers)} NEUE Papers gefunden** (von {len(current_papers)} gesamt)")
                 st.balloons()
                 
-                # Email für neue Papers
+                # Email für neue Papers SENDEN
                 send_paper_notification(query, len(new_papers), new_papers, is_new_papers=True, force_send=force_email)
                 
                 # Excel aktualisieren
@@ -267,7 +412,7 @@ def execute_paper_search(query: str, max_results: int, date_filter: str, force_e
             st.success(f"🎉 **Erste Suche:** {len(current_papers)} Papers gefunden!")
             st.balloons()
             
-            # Email für alle Papers
+            # Email für alle Papers SENDEN
             send_paper_notification(query, len(current_papers), current_papers, is_new_papers=False, force_send=force_email)
             
             # Neue Excel-Datei erstellen
@@ -280,7 +425,7 @@ def execute_paper_search(query: str, max_results: int, date_filter: str, force_e
         save_search_results(query, current_papers, is_repeat_search)
 
 def perform_pubmed_search(query: str, max_results: int) -> List[Dict[str, Any]]:
-    """Führt PubMed-Suche durch"""
+    """Führt vollständige PubMed-Suche durch"""
     base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
     
     # 1. esearch - hole PMIDs
@@ -290,8 +435,8 @@ def perform_pubmed_search(query: str, max_results: int) -> List[Dict[str, Any]]:
         "term": query,
         "retmode": "json",
         "retmax": max_results,
-        "email": "research@example.com",
-        "tool": "IntegratedPaperSearch"
+        "email": "research@paper-search.com",
+        "tool": "IntegratedPaperSearchSystem"
     }
     
     try:
@@ -315,7 +460,7 @@ def perform_pubmed_search(query: str, max_results: int) -> List[Dict[str, Any]]:
         return []
 
 def fetch_paper_details(pmids: List[str]) -> List[Dict[str, Any]]:
-    """Holt vollständige Paper-Details"""
+    """Holt vollständige Paper-Details von PubMed"""
     if not pmids:
         return []
     
@@ -325,8 +470,8 @@ def fetch_paper_details(pmids: List[str]) -> List[Dict[str, Any]]:
         "db": "pubmed",
         "id": ",".join(pmids),
         "retmode": "xml",
-        "email": "research@example.com",
-        "tool": "IntegratedPaperSearch"
+        "email": "research@paper-search.com",
+        "tool": "IntegratedPaperSearchSystem"
     }
     
     progress_bar = st.progress(0)
@@ -369,7 +514,7 @@ def fetch_paper_details(pmids: List[str]) -> List[Dict[str, Any]]:
         return []
 
 def parse_article(article) -> Dict[str, Any]:
-    """Parst einzelnen Artikel aus XML"""
+    """Parst einzelnen Artikel aus PubMed XML"""
     try:
         # PMID
         pmid_elem = article.find(".//PMID")
@@ -463,7 +608,7 @@ def build_search_query(base_query: str, date_filter: str) -> str:
     return " ".join(query_parts)
 
 def load_previous_search_results(query: str) -> List[Dict[str, Any]]:
-    """Lädt vorherige Suchergebnisse"""
+    """Lädt vorherige Suchergebnisse aus Excel"""
     excel_filename = get_excel_filename(query)
     excel_path = os.path.join("saved_searches", excel_filename)
     
@@ -506,6 +651,193 @@ def find_new_papers(current_papers: List[Dict], previous_papers: List[Dict]) -> 
             paper["Is_New"] = False
     
     return new_papers
+
+def send_paper_notification(query: str, paper_count: int, papers: List[Dict], is_new_papers: bool = False, force_send: bool = False):
+    """Sendet ECHTE Email-Benachrichtigung"""
+    settings = st.session_state.get("email_settings", {})
+    
+    # Prüfe ob Email gesendet werden soll
+    should_send = (force_send or 
+                  (settings.get("auto_notifications", False) and 
+                   paper_count >= settings.get("min_papers", 5)))
+    
+    if not should_send:
+        return
+    
+    # Email-Inhalt generieren
+    email_type = "Neue Papers" if is_new_papers else "Paper-Suche"
+    subject_template = settings.get("subject_template", "Papers für '{search_term}'")
+    
+    try:
+        subject = subject_template.format(count=paper_count, search_term=query)
+    except:
+        subject = f"{email_type}: {paper_count} Papers für '{query}'"
+    
+    # Email-Nachricht erstellen
+    message_template = settings.get("message_template", "Papers gefunden")
+    
+    try:
+        message = message_template.format(
+            date=datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            search_term=query,
+            count=paper_count
+        )
+    except:
+        message = f"{email_type}: {paper_count} Papers für '{query}' gefunden"
+    
+    # Top Papers zur Nachricht hinzufügen
+    if papers:
+        message += "\n\n📋 Top Papers:\n"
+        for i, paper in enumerate(papers[:5], 1):
+            title = paper.get('Title', 'Unbekannt')[:60]
+            message += f"\n{i}. {title}..."
+            message += f"\n   PMID: {paper.get('PMID', 'n/a')}"
+            message += f"\n   URL: {paper.get('URL', 'n/a')}"
+        
+        if len(papers) > 5:
+            message += f"\n\n... und {len(papers) - 5} weitere Papers"
+    
+    # ECHTE EMAIL SENDEN
+    recipient = settings.get("recipient_email", "")
+    
+    # Optional: Excel-Datei als Attachment
+    excel_filename = get_excel_filename(query)
+    excel_path = os.path.join("saved_searches", excel_filename)
+    attachment_path = excel_path if os.path.exists(excel_path) else None
+    
+    success, status_message = send_real_email(recipient, subject, message, attachment_path)
+    
+    # Email zur Historie hinzufügen
+    email_notification = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "date": datetime.datetime.now().date().isoformat(),
+        "search_term": query,
+        "paper_count": paper_count,
+        "recipient": recipient,
+        "status": status_message,
+        "type": email_type,
+        "subject": subject,
+        "message": message,
+        "success": success,
+        "has_attachment": attachment_path is not None
+    }
+    
+    if "email_history" not in st.session_state:
+        st.session_state["email_history"] = []
+    
+    st.session_state["email_history"].append(email_notification)
+    
+    # Status anzeigen
+    if success:
+        st.success(f"📧 **Email gesendet!** {email_type} für '{query}' an {recipient}")
+    else:
+        st.error(f"📧 **Email-Fehler:** {status_message}")
+    
+    # Email-Vorschau
+    with st.expander("📧 Gesendete Email anzeigen"):
+        preview = f"""Von: {settings.get('sender_email', 'system@example.com')}
+An: {recipient}
+Betreff: {subject}
+Attachment: {'✅ Excel-Datei' if attachment_path else '❌ Keine'}
+
+{message}"""
+        st.code(preview, language="text")
+
+def display_papers_with_highlights(all_papers: List[Dict], new_papers: List[Dict], query: str):
+    """Zeigt Papers mit Hervorhebung neuer Papers"""
+    st.subheader(f"📋 **Papers für '{query}' ({len(all_papers)} gesamt, {len(new_papers)} neu)**")
+    
+    # Statistiken
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("📄 Gesamt Papers", len(all_papers))
+    
+    with col2:
+        st.metric("🆕 Neue Papers", len(new_papers))
+    
+    with col3:
+        with_abstract = len([p for p in all_papers if p.get("Abstract", "") != "No abstract available"])
+        st.metric("📝 Mit Abstract", with_abstract)
+    
+    with col4:
+        current_year = datetime.datetime.now().year
+        recent = len([p for p in all_papers if p.get("Year", "0").isdigit() and int(p.get("Year", "0")) >= current_year - 5])
+        st.metric("🆕 Letzte 5 Jahre", recent)
+    
+    # Papers anzeigen (erste 10)
+    display_papers = all_papers[:10]
+    
+    for idx, paper in enumerate(display_papers):
+        is_new = paper.get("Is_New", False)
+        status_icon = "🆕" if is_new else "📄"
+        
+        # Titel mit Hervorhebung
+        header_style = "**🆕 NEU:** " if is_new else ""
+        header = f"{status_icon} {header_style}**{idx + 1}.** {paper.get('Title', 'Unbekannt')[:70]}..."
+        
+        with st.expander(header):
+            col_paper1, col_paper2 = st.columns([3, 1])
+            
+            with col_paper1:
+                st.write(f"**📄 Titel:** {paper.get('Title', 'n/a')}")
+                st.write(f"**👥 Autoren:** {paper.get('Authors', 'n/a')}")
+                st.write(f"**📚 Journal:** {paper.get('Journal', 'n/a')} ({paper.get('Year', 'n/a')})")
+                st.write(f"**🆔 PMID:** {paper.get('PMID', 'n/a')}")
+                
+                if paper.get('URL'):
+                    st.markdown(f"🔗 [**PubMed ansehen**]({paper.get('URL')})")
+            
+            with col_paper2:
+                if is_new:
+                    st.success("🆕 **NEUES PAPER**")
+                else:
+                    st.info("📄 Bereits bekannt")
+                
+                if st.button("📧 **Email senden**", key=f"email_single_{paper.get('PMID', idx)}"):
+                    send_single_paper_email(paper, query)
+
+def send_single_paper_email(paper: Dict, search_term: str):
+    """Sendet ECHTE Email für einzelnes Paper"""
+    settings = st.session_state.get("email_settings", {})
+    
+    subject = f"📄 Einzelnes Paper: {paper.get('Title', 'Unknown')[:40]}..."
+    
+    message = f"""📄 Einzelnes Paper aus der Suche '{search_term}':
+
+Titel: {paper.get('Title', 'Unbekannt')}
+Autoren: {paper.get('Authors', 'n/a')}
+Journal: {paper.get('Journal', 'n/a')} ({paper.get('Year', 'n/a')})
+PMID: {paper.get('PMID', 'n/a')}
+
+PubMed Link: {paper.get('URL', 'n/a')}
+
+Abstract:
+{paper.get('Abstract', 'No abstract available')[:500]}...
+
+Gesendet am: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"""
+    
+    recipient = settings.get("recipient_email", "")
+    success, status_message = send_real_email(recipient, subject, message)
+    
+    # Historie hinzufügen
+    test_email = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "date": datetime.datetime.now().date().isoformat(),
+        "search_term": f"Einzelpaper: {search_term}",
+        "paper_count": 1,
+        "recipient": recipient,
+        "status": status_message,
+        "type": "Einzelpaper",
+        "success": success
+    }
+    
+    st.session_state["email_history"].append(test_email)
+    
+    if success:
+        st.success(f"📧 **Email erfolgreich gesendet** für: {paper.get('Title', 'Unknown')[:40]}...")
+    else:
+        st.error(f"📧 **Email-Fehler:** {status_message}")
 
 def get_excel_filename(query: str) -> str:
     """Generiert Excel-Dateinamen"""
@@ -607,164 +939,6 @@ def update_excel_file(query: str, all_papers: List[Dict], new_papers: List[Dict]
     except Exception as e:
         st.error(f"❌ **Fehler beim Aktualisieren der Excel-Datei:** {str(e)}")
 
-def send_paper_notification(query: str, paper_count: int, papers: List[Dict], is_new_papers: bool = False, force_send: bool = False):
-    """Sendet Email-Benachrichtigung"""
-    settings = st.session_state.get("email_settings", {})
-    
-    # Prüfe ob Email gesendet werden soll
-    should_send = (force_send or 
-                  (settings.get("auto_notifications", False) and 
-                   paper_count >= settings.get("min_papers", 5)))
-    
-    if not should_send:
-        return
-    
-    # Email-Typ bestimmen
-    email_type = "Neue Papers" if is_new_papers else "Paper-Suche"
-    subject_template = settings.get("subject_template", "Papers für '{search_term}'")
-    
-    try:
-        subject = subject_template.format(count=paper_count, search_term=query)
-    except:
-        subject = f"{email_type}: {paper_count} Papers für '{query}'"
-    
-    # Email-Nachricht erstellen
-    message_template = settings.get("message_template", "Papers gefunden")
-    
-    try:
-        message = message_template.format(
-            date=datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
-            search_term=query,
-            count=paper_count
-        )
-    except:
-        message = f"{email_type}: {paper_count} Papers für '{query}' gefunden"
-    
-    # Top Papers zur Nachricht hinzufügen
-    if papers:
-        message += "\n\n📋 Top Papers:\n"
-        for i, paper in enumerate(papers[:5], 1):
-            title = paper.get('Title', 'Unbekannt')[:60]
-            message += f"\n{i}. {title}..."
-            message += f"\n   PMID: {paper.get('PMID', 'n/a')}"
-        
-        if len(papers) > 5:
-            message += f"\n\n... und {len(papers) - 5} weitere Papers"
-    
-    # Email zur Historie hinzufügen
-    email_notification = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "date": datetime.datetime.now().date().isoformat(),
-        "search_term": query,
-        "paper_count": paper_count,
-        "recipient": settings.get("recipient_email", ""),
-        "status": "Gesendet (simuliert)",
-        "type": email_type,
-        "subject": subject,
-        "message": message
-    }
-    
-    if "email_history" not in st.session_state:
-        st.session_state["email_history"] = []
-    
-    st.session_state["email_history"].append(email_notification)
-    
-    st.info(f"📧 **Email-Benachrichtigung erstellt:** {email_type} für '{query}'")
-    
-    # Email-Vorschau
-    with st.expander("📧 Email-Vorschau anzeigen"):
-        preview = f"""Von: {settings.get('sender_email', 'system@example.com')}
-An: {settings.get('recipient_email', 'user@example.com')}
-Betreff: {subject}
-
-{message}"""
-        st.code(preview, language="text")
-
-def display_papers_with_highlights(all_papers: List[Dict], new_papers: List[Dict], query: str):
-    """Zeigt Papers mit Hervorhebung neuer Papers"""
-    st.subheader(f"📋 **Papers für '{query}' ({len(all_papers)} gesamt, {len(new_papers)} neu)**")
-    
-    # Statistiken
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("📄 Gesamt Papers", len(all_papers))
-    
-    with col2:
-        st.metric("🆕 Neue Papers", len(new_papers))
-    
-    with col3:
-        with_abstract = len([p for p in all_papers if p.get("Abstract", "") != "No abstract available"])
-        st.metric("📝 Mit Abstract", with_abstract)
-    
-    with col4:
-        current_year = datetime.datetime.now().year
-        recent = len([p for p in all_papers if p.get("Year", "0").isdigit() and int(p.get("Year", "0")) >= current_year - 5])
-        st.metric("🆕 Letzte 5 Jahre", recent)
-    
-    # Papers anzeigen (erste 10)
-    display_papers = all_papers[:10]
-    
-    for idx, paper in enumerate(display_papers):
-        is_new = paper.get("Is_New", False)
-        status_icon = "🆕" if is_new else "📄"
-        
-        # Titel mit Hervorhebung
-        header_style = "**🆕 NEU:** " if is_new else ""
-        header = f"{status_icon} {header_style}**{idx + 1}.** {paper.get('Title', 'Unbekannt')[:70]}..."
-        
-        with st.expander(header):
-            col_paper1, col_paper2 = st.columns([3, 1])
-            
-            with col_paper1:
-                st.write(f"**📄 Titel:** {paper.get('Title', 'n/a')}")
-                st.write(f"**👥 Autoren:** {paper.get('Authors', 'n/a')}")
-                st.write(f"**📚 Journal:** {paper.get('Journal', 'n/a')} ({paper.get('Year', 'n/a')})")
-                st.write(f"**🆔 PMID:** {paper.get('PMID', 'n/a')}")
-                
-                if paper.get('URL'):
-                    st.markdown(f"🔗 [**PubMed ansehen**]({paper.get('URL')})")
-            
-            with col_paper2:
-                if is_new:
-                    st.success("🆕 **NEUES PAPER**")
-                else:
-                    st.info("📄 Bereits bekannt")
-                
-                if st.button("📧 **Email senden**", key=f"email_single_{paper.get('PMID', idx)}"):
-                    send_single_paper_email(paper, query)
-
-def send_single_paper_email(paper: Dict, search_term: str):
-    """Sendet Email für einzelnes Paper"""
-    settings = st.session_state.get("email_settings", {})
-    
-    subject = f"📄 Einzelnes Paper: {paper.get('Title', 'Unknown')[:40]}..."
-    
-    message = f"""📄 Einzelnes Paper aus der Suche '{search_term}':
-
-Titel: {paper.get('Title', 'Unbekannt')}
-Autoren: {paper.get('Authors', 'n/a')}
-Journal: {paper.get('Journal', 'n/a')} ({paper.get('Year', 'n/a')})
-PMID: {paper.get('PMID', 'n/a')}
-
-PubMed Link: {paper.get('URL', 'n/a')}
-
-Gesendet am: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"""
-    
-    # Zur Historie hinzufügen
-    email_notification = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "date": datetime.datetime.now().date().isoformat(),
-        "search_term": f"Einzelpaper: {search_term}",
-        "paper_count": 1,
-        "recipient": settings.get("recipient_email", ""),
-        "status": "Einzelpaper gesendet (simuliert)",
-        "type": "Einzelpaper"
-    }
-    
-    st.session_state["email_history"].append(email_notification)
-    st.success(f"📧 **Email gesendet** für: {paper.get('Title', 'Unknown')[:40]}...")
-
 def save_search_results(query: str, papers: List[Dict], is_repeat: bool):
     """Speichert Suchergebnisse"""
     st.session_state["paper_search_results"][query] = {
@@ -779,7 +953,6 @@ def save_search_results(query: str, papers: List[Dict], is_repeat: bool):
         "results_count": len(papers)
     })
 
-# EXCEL-MANAGEMENT
 def show_excel_management():
     """Excel-Dateien verwalten"""
     st.write("**📊 Excel-Dateien verwalten**")
@@ -835,9 +1008,8 @@ def show_excel_preview(file_path: str):
     except Exception as e:
         st.error(f"Fehler beim Laden der Excel-Datei: {str(e)}")
 
-# EMAIL-VERLAUF UND TESTS (wie vorher, aber erweitert)
 def show_email_history():
-    """Email-Verlauf mit Such-Integration"""
+    """Vollständiger Email-Verlauf mit Erfolgs-Status"""
     st.write("**📊 Email-Benachrichtigungs-Verlauf:**")
     
     history = st.session_state.get("email_history", [])
@@ -854,8 +1026,8 @@ def show_email_history():
             st.metric("🔍 Paper-Emails", paper_emails)
         
         with col3:
-            new_paper_emails = len([h for h in history if h.get("type", "") == "Neue Papers"])
-            st.metric("🆕 Neue-Paper-Emails", new_paper_emails)
+            successful_emails = len([h for h in history if h.get("success", False)])
+            st.metric("✅ Erfolgreich", successful_emails)
         
         with col4:
             total_papers = sum(h.get("paper_count", 0) for h in history)
@@ -869,11 +1041,13 @@ def show_email_history():
             search_term = email.get("search_term", "Unbekannt")
             paper_count = email.get("paper_count", 0)
             timestamp = email.get("timestamp", "Unbekannt")[:19]
+            success = email.get("success", False)
             
-            # Icon basierend auf Typ
+            # Status-Icon basierend auf Erfolg
+            status_icon = "✅" if success else "❌"
             type_icon = "🆕" if email_type == "Neue Papers" else "🔍" if email_type == "Paper-Suche" else "📧"
             
-            with st.expander(f"{type_icon} {i}. {email_type}: {search_term} - {paper_count} Papers ({timestamp})"):
+            with st.expander(f"{status_icon} {type_icon} {i}. {email_type}: {search_term} - {paper_count} Papers ({timestamp})"):
                 col_detail1, col_detail2 = st.columns(2)
                 
                 with col_detail1:
@@ -883,8 +1057,17 @@ def show_email_history():
                 
                 with col_detail2:
                     st.write(f"**Empfänger:** {email.get('recipient', 'N/A')}")
-                    st.write(f"**Status:** {email.get('status', 'N/A')}")
+                    st.write(f"**✅ Erfolgreich gesendet:** {'Ja' if success else 'Nein'}")
                     st.write(f"**Zeit:** {timestamp}")
+                    if email.get("has_attachment"):
+                        st.write("📎 **Attachment:** Excel-Datei enthalten")
+                
+                # Status-Details
+                status = email.get("status", "N/A")
+                if success:
+                    st.success(f"✅ {status}")
+                else:
+                    st.error(f"❌ {status}")
                 
                 # Vollständige Email anzeigen
                 if st.button("📧 Vollständige Email anzeigen", key=f"show_full_{i}"):
@@ -906,7 +1089,7 @@ def show_email_history():
         st.info("📭 Noch keine Email-Benachrichtigungen versendet.")
 
 def show_email_tests():
-    """Erweiterte Email-Tests"""
+    """Vollständige Email-Tests mit echten Emails"""
     st.write("**🧪 Email-System testen:**")
     
     settings = st.session_state.get("email_settings", {})
@@ -914,6 +1097,7 @@ def show_email_tests():
     # Konfigurationsstatus
     sender_ok = bool(settings.get("sender_email"))
     recipient_ok = bool(settings.get("recipient_email"))
+    password_ok = bool(settings.get("sender_password"))
     auto_ok = settings.get("auto_notifications", False)
     
     st.write("**📋 System-Status:**")
@@ -923,22 +1107,24 @@ def show_email_tests():
     with col_status1:
         st.write(f"{'✅' if sender_ok else '❌'} **Absender Email:** {'Konfiguriert' if sender_ok else 'Fehlt'}")
         st.write(f"{'✅' if recipient_ok else '❌'} **Empfänger Email:** {'Konfiguriert' if recipient_ok else 'Fehlt'}")
+        st.write(f"{'✅' if password_ok else '❌'} **Email Passwort:** {'Konfiguriert' if password_ok else 'Fehlt'}")
     
     with col_status2:
         st.write(f"{'✅' if auto_ok else '❌'} **Auto-Benachrichtigungen:** {'Aktiviert' if auto_ok else 'Deaktiviert'}")
         st.write(f"**Min. Papers:** {settings.get('min_papers', 5)}")
+        st.write(f"**SMTP Server:** {settings.get('smtp_server', 'N/A')}")
     
-    # Erweiterte Test-Funktionen
+    # Test-Funktionen
     st.write("**🧪 Test-Aktionen:**")
     
     col_test1, col_test2, col_test3 = st.columns(3)
     
     with col_test1:
-        if st.button("📧 Test-Email"):
-            if sender_ok and recipient_ok:
+        if st.button("📧 **ECHTE Test-Email senden**", type="primary"):
+            if sender_ok and recipient_ok and password_ok:
                 send_test_email()
             else:
-                st.error("❌ Email-Konfiguration unvollständig!")
+                st.error("❌ Email-Konfiguration unvollständig! Prüfen Sie Email, Empfänger und Passwort.")
     
     with col_test2:
         if st.button("🔍 Test Paper-Email"):
@@ -949,42 +1135,79 @@ def show_email_tests():
             show_system_statistics()
 
 def send_test_email():
-    """Sendet Standard-Test-Email"""
+    """Sendet ECHTE Test-Email"""
     settings = st.session_state.get("email_settings", {})
     
+    sender = settings.get("sender_email", "")
+    recipient = settings.get("recipient_email", "")
+    
+    if not sender or not recipient:
+        st.error("❌ Email-Konfiguration unvollständig!")
+        return
+    
+    subject = "🧪 Test-Email vom Paper-Suche System"
+    message = f"""Dies ist eine ECHTE Test-Email vom integrierten Paper-Suche System.
+
+📅 Gesendet am: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+📧 Von: {sender}
+📧 An: {recipient}
+
+✅ Wenn Sie diese Email erhalten, funktioniert das Email-System korrekt!
+
+System-Informationen:
+• SMTP Server: {settings.get('smtp_server', 'N/A')}
+• Port: {settings.get('smtp_port', 'N/A')}
+• TLS: {'Aktiviert' if settings.get('use_tls', False) else 'Deaktiviert'}
+
+🔥 Dies ist eine ECHTE Email, keine Simulation!
+
+Mit freundlichen Grüßen,
+Ihr Paper-Suche Email-System"""
+    
+    success, status_message = send_real_email(recipient, subject, message)
+    
+    # Historie hinzufügen
     test_email = {
         "timestamp": datetime.datetime.now().isoformat(),
         "date": datetime.datetime.now().date().isoformat(),
         "search_term": "System-Test",
-        "paper_count": 3,
-        "recipient": settings.get("recipient_email", ""),
-        "status": "Test erfolgreich (simuliert)",
-        "type": "Test"
+        "paper_count": 0,
+        "recipient": recipient,
+        "status": status_message,
+        "type": "Test",
+        "success": success,
+        "subject": subject,
+        "message": message
     }
     
     st.session_state["email_history"].append(test_email)
-    st.success("✅ Test-Email erfolgreich erstellt!")
     
-    preview = generate_email_preview(settings, "System-Test", 3)
+    if success:
+        st.success("✅ **ECHTE Test-Email erfolgreich gesendet!** Prüfen Sie Ihr Postfach.")
+        st.balloons()
+    else:
+        st.error(f"❌ **Test-Email fehlgeschlagen:** {status_message}")
+    
+    # Vorschau
     with st.expander("📧 Test-Email Vorschau"):
-        st.code(preview, language="text")
+        st.code(f"An: {recipient}\nBetreff: {subject}\n\n{message}", language="text")
 
 def send_test_paper_email():
-    """Sendet Test-Email für Paper-Suche"""
+    """Sendet ECHTE Test-Email für Paper-Suche"""
     settings = st.session_state.get("email_settings", {})
     
     test_papers = [
-        {"Title": "Test Paper 1", "PMID": "12345", "Authors": "Smith, J. et al."},
-        {"Title": "Test Paper 2", "PMID": "67890", "Authors": "Jones, A. et al."},
-        {"Title": "Test Paper 3", "PMID": "13579", "Authors": "Brown, K. et al."}
+        {"Title": "Test Paper 1: Machine Learning in Medicine", "PMID": "12345", "Authors": "Smith, J. et al.", "URL": "https://pubmed.ncbi.nlm.nih.gov/12345/"},
+        {"Title": "Test Paper 2: AI Applications in Healthcare", "PMID": "67890", "Authors": "Jones, A. et al.", "URL": "https://pubmed.ncbi.nlm.nih.gov/67890/"},
+        {"Title": "Test Paper 3: Deep Learning for Diagnosis", "PMID": "13579", "Authors": "Brown, K. et al.", "URL": "https://pubmed.ncbi.nlm.nih.gov/13579/"}
     ]
     
     send_paper_notification("Test-Suchbegriff", 3, test_papers, is_new_papers=True, force_send=True)
-    st.success("✅ Test-Paper-Email erstellt!")
+    st.success("✅ ECHTE Test-Paper-Email gesendet!")
 
 def show_system_statistics():
-    """Zeigt erweiterte System-Statistiken"""
-    st.write("**📊 Erweiterte System-Statistiken:**")
+    """Zeigt vollständige System-Statistiken"""
+    st.write("**📊 Vollständige System-Statistiken:**")
     
     # Email-Statistiken
     history = st.session_state.get("email_history", [])
@@ -997,11 +1220,19 @@ def show_system_statistics():
         st.write(f"• Gesamt Emails: {len(history)}")
         
         if history:
+            successful = len([h for h in history if h.get("success", False)])
+            failed = len(history) - successful
+            success_rate = (successful / len(history) * 100) if history else 0
+            
+            st.write(f"• ✅ Erfolgreich: {successful}")
+            st.write(f"• ❌ Fehlgeschlagen: {failed}")
+            st.write(f"• 📊 Erfolgsrate: {success_rate:.1f}%")
+            
             paper_emails = len([h for h in history if "paper" in h.get("type", "").lower()])
-            st.write(f"• Paper-Emails: {paper_emails}")
+            st.write(f"• 🔍 Paper-Emails: {paper_emails}")
             
             total_papers = sum(h.get("paper_count", 0) for h in history)
-            st.write(f"• Gesamt Papers: {total_papers}")
+            st.write(f"• 📄 Gesamt Papers: {total_papers}")
     
     with col_stat2:
         st.write("**🔍 Paper-Suche:**")
@@ -1009,10 +1240,14 @@ def show_system_statistics():
         
         if search_history:
             total_results = sum(s.get("results_count", 0) for s in search_history)
-            st.write(f"• Gesamt Ergebnisse: {total_results}")
+            st.write(f"• 📊 Gesamt Ergebnisse: {total_results}")
             
             avg_results = total_results / len(search_history) if search_history else 0
-            st.write(f"• Ø Ergebnisse/Suche: {avg_results:.1f}")
+            st.write(f"• 📈 Ø Ergebnisse/Suche: {avg_results:.1f}")
+            
+            recent_searches = [s for s in search_history if 
+                             (datetime.datetime.now() - datetime.datetime.fromisoformat(s["timestamp"])).days <= 7]
+            st.write(f"• 🗓️ Suchen (7 Tage): {len(recent_searches)}")
     
     with col_stat3:
         st.write("**📁 Excel-System:**")
@@ -1020,13 +1255,13 @@ def show_system_statistics():
         if os.path.exists("saved_searches"):
             excel_files = [f for f in os.listdir("saved_searches") if f.endswith('.xlsx')]
         
-        st.write(f"• Excel-Dateien: {len(excel_files)}")
+        st.write(f"• 📄 Excel-Dateien: {len(excel_files)}")
         
         if excel_files:
             total_size = sum(os.path.getsize(os.path.join("saved_searches", f)) for f in excel_files)
-            st.write(f"• Gesamt Größe: {total_size:,} bytes")
+            st.write(f"• 💾 Gesamt Größe: {total_size:,} bytes")
+            st.write(f"• 📊 Ø Größe/Datei: {total_size//len(excel_files):,} bytes")
 
-# HILFSFUNKTIONEN (wie vorher)
 def generate_email_preview(settings, search_term, count):
     """Generiert Email-Vorschau"""
     try:
@@ -1052,9 +1287,9 @@ Betreff: {subject}
     except Exception as e:
         return f"Email-Vorschau Fehler: {str(e)}"
 
-# Integration-Funktionen für andere Module (erweitert)
+# Integration-Funktionen für andere Module
 def trigger_email_notification(search_term, paper_count):
-    """Erweiterte Integration für andere Module"""
+    """Integration für andere Module mit echter Email"""
     try:
         settings = st.session_state.get("email_settings", {})
         
@@ -1065,22 +1300,41 @@ def trigger_email_notification(search_term, paper_count):
         if paper_count < min_papers:
             return False
         
+        # Sende echte Email
+        subject = f"🔬 Automatische Benachrichtigung: {paper_count} Papers für '{search_term}'"
+        message = f"""Automatische Paper-Benachrichtigung
+
+📅 Datum: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
+🔍 Suchbegriff: '{search_term}'
+📊 Anzahl Papers: {paper_count}
+
+Diese Benachrichtigung wurde automatisch von einem anderen Modul ausgelöst.
+
+Mit freundlichen Grüßen,
+Ihr automatisches Paper-Suche System"""
+        
+        recipient = settings.get("recipient_email", "")
+        success, status_message = send_real_email(recipient, subject, message)
+        
         # Erstelle Email-Benachrichtigung
         email_notification = {
             "timestamp": datetime.datetime.now().isoformat(),
             "date": datetime.datetime.now().date().isoformat(),
             "search_term": search_term,
             "paper_count": paper_count,
-            "recipient": settings.get("recipient_email", ""),
-            "status": "Automatisch gesendet (simuliert)",
-            "type": "Automatisch (von anderem Modul)"
+            "recipient": recipient,
+            "status": status_message,
+            "type": "Automatisch (von anderem Modul)",
+            "success": success,
+            "subject": subject,
+            "message": message
         }
         
         if "email_history" not in st.session_state:
             st.session_state["email_history"] = []
         
         st.session_state["email_history"].append(email_notification)
-        return True
+        return success
     
     except Exception:
         return False
@@ -1090,8 +1344,13 @@ def get_email_settings():
     return st.session_state.get("email_settings", {})
 
 def is_email_enabled():
-    """Prüft ob Email-System aktiviert und konfiguriert ist"""
+    """Prüft ob Email-System aktiviert und vollständig konfiguriert ist"""
     settings = st.session_state.get("email_settings", {})
     return (settings.get("auto_notifications", False) and 
             bool(settings.get("sender_email")) and 
-            bool(settings.get("recipient_email")))
+            bool(settings.get("recipient_email")) and
+            bool(settings.get("sender_password")))
+
+# Hauptfunktion für externe Verwendung
+if __name__ == "__main__":
+    module_email()
