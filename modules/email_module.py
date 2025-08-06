@@ -3327,7 +3327,7 @@ def generate_comprehensive_system_report():
             bool(settings.get("recipient_email")) and
             bool(settings.get("sender_password")))
 
-def should_send_email(paper_count: int) -> bool:
+    def should_send_email(paper_count: int) -> bool:
     """Prüft ob Email gesendet werden soll"""
     settings = st.session_state.get("email_settings", {})
     return (settings.get("auto_notifications", False) and
