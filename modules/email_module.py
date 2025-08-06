@@ -1,4 +1,4 @@
-# modules/email_module.py - KORRIGIERTE VERSION OHNE SYNTAX-FEHLER
+# modules/email_module.py - KORRIGIERTE VERSION OHNE SCHEDULE
 import streamlit as st
 import datetime
 import requests
@@ -60,13 +60,6 @@ def module_email():
     
     with tab7:
         show_system_settings()
-
-def generate_unique_key(prefix: str, context: str = "") -> str:
-    """Generiert eindeutige Keys für Streamlit-Elemente"""
-    timestamp = datetime.datetime.now().strftime('%H%M%S%f')[:-3]
-    if context:
-        return f"{prefix}_{context}_{timestamp}"
-    return f"{prefix}_{timestamp}"
 
 def initialize_session_state():
     """Vollständige Session State Initialisierung"""
@@ -256,9 +249,8 @@ def show_dashboard():
             col_search1, col_search2, col_search3 = st.columns([3, 1, 1])
             
             with col_search1:
-                search_key = generate_unique_key("search_btn", search_term)
                 if st.button(f"🔍 **{search_term}** ({search_count} Suchen, {total_papers} Papers)", 
-                           key=search_key):
+                           key=f"search_btn_{search_term}"):
                     show_search_details(search_term, searches)
             
             with col_search2:
@@ -266,8 +258,7 @@ def show_dashboard():
                 st.write(f"📅 {last_time}")
             
             with col_search3:
-                excel_key = generate_unique_key("excel_btn", search_term)
-                if st.button("📊 Excel", key=excel_key):
+                if st.button("📊 Excel", key=f"excel_btn_{search_term}"):
                     show_excel_sheet_content(search_term)
         
         # Quick Actions
@@ -277,15 +268,15 @@ def show_dashboard():
         col_quick1, col_quick2, col_quick3 = st.columns(3)
         
         with col_quick1:
-            if st.button("🔄 **Alle Suchen wiederholen**", key=generate_unique_key("repeat_all")):
+            if st.button("🔄 **Alle Suchen wiederholen**"):
                 repeat_all_searches()
         
         with col_quick2:
-            if st.button("📧 **Status-Email senden**", key=generate_unique_key("status_email")):
+            if st.button("📧 **Status-Email senden**"):
                 send_status_email()
         
         with col_quick3:
-            if st.button("📁 **Excel öffnen**", key=generate_unique_key("excel_open")):
+            if st.button("📁 **Excel öffnen**"):
                 offer_excel_download()
     
     else:
@@ -356,8 +347,7 @@ def show_advanced_paper_search():
         cols = st.columns(min(len(unique_terms), 5))
         for i, term in enumerate(unique_terms):
             with cols[i]:
-                quick_key = generate_unique_key("quick", f"{i}_{term}")
-                if st.button(f"🔍 {term[:15]}...", key=quick_key):
+                if st.button(f"🔍 {term[:15]}...", key=f"quick_{i}"):
                     execute_advanced_paper_search(term, 50, "Letzte 2 Jahre", False, False)
     
     # Suche ausführen
@@ -690,7 +680,7 @@ def create_new_excel_sheet(search_term: str, papers: List[Dict]):
         st.success(f"✅ **Neues Excel-Sheet erstellt:** '{sheet_name}' mit {len(papers)} Papers")
         
         # Download anbieten
-        offer_excel_download(context="new_sheet")
+        offer_excel_download()
         
     except Exception as e:
         st.error(f"❌ **Fehler beim Erstellen des Excel-Sheets:** {str(e)}")
@@ -741,7 +731,7 @@ def update_excel_sheet(search_term: str, all_papers: List[Dict], new_papers: Lis
         wb.save(template_path)
         
         st.success(f"✅ **Excel-Sheet aktualisiert:** {len(new_papers)} neue Papers hinzugefügt zu '{sheet_name}'")
-        offer_excel_download(context="update_sheet")
+        offer_excel_download()
         
     except Exception as e:
         st.error(f"❌ **Fehler beim Aktualisieren des Excel-Sheets:** {str(e)}")
@@ -916,11 +906,11 @@ def show_email_config():
     col_test1, col_test2 = st.columns(2)
     
     with col_test1:
-        if st.button("📧 **Test-Email senden**", type="primary", key=generate_unique_key("test_email")):
+        if st.button("📧 **Test-Email senden**", type="primary"):
             send_test_email()
     
     with col_test2:
-        if st.button("📊 **Email-Status prüfen**", key=generate_unique_key("check_status")):
+        if st.button("📊 **Email-Status prüfen**"):
             check_email_status()
 
 def send_test_email():
@@ -1035,6 +1025,8 @@ def send_real_email(to_email: str, subject: str, message: str, attachment_path: 
         return False, "❌ SMTP-Server-Verbindung unterbrochen"
     except Exception as e:
         return False, f"❌ Email-Fehler: {str(e)}"
+
+# ALLE FEHLENDEN FUNKTIONEN HINZUFÜGEN
 
 def send_status_email():
     """Sendet Status-Email mit aktueller Übersicht"""
@@ -1270,6 +1262,8 @@ def repeat_all_searches():
     else:
         st.info("ℹ️ **Wiederholung abgeschlossen.** Keine neuen Papers gefunden.")
 
+# AUTOMATISCHE SUCHEN SYSTEM
+
 def show_automatic_search_system():
     """Automatisches Such-System (vereinfacht ohne schedule)"""
     st.subheader("🤖 Automatisches Such-System")
@@ -1338,12 +1332,10 @@ def show_automatic_search_system():
                     st.write(f"**🕒 Letzter Lauf:** {last_run[:19] if last_run != 'Nie' else 'Nie'}")
                 
                 with col_config2:
-                    run_key = generate_unique_key("run_auto", search_id)
-                    if st.button("▶️ Jetzt ausführen", key=run_key):
+                    if st.button("▶️ Jetzt ausführen", key=f"run_auto_{search_id}"):
                         run_automatic_search_simple(search_config)
                     
-                    delete_key = generate_unique_key("delete_auto", search_id)
-                    if st.button("🗑️ Löschen", key=delete_key):
+                    if st.button("🗑️ Löschen", key=f"delete_auto_{search_id}"):
                         delete_automatic_search(search_id)
                         st.rerun()
         
@@ -1352,11 +1344,11 @@ def show_automatic_search_system():
         col_global1, col_global2 = st.columns(2)
         
         with col_global1:
-            if st.button("▶️ **Alle automatischen Suchen ausführen**", type="primary", key=generate_unique_key("run_all_auto")):
+            if st.button("▶️ **Alle automatischen Suchen ausführen**", type="primary"):
                 run_all_automatic_searches_simple()
         
         with col_global2:
-            if st.button("🔄 **Status aktualisieren**", key=generate_unique_key("refresh_auto")):
+            if st.button("🔄 **Status aktualisieren**"):
                 st.rerun()
     
     else:
@@ -1422,6 +1414,8 @@ def delete_automatic_search(search_id: str):
         del st.session_state["automatic_searches"][search_id]
         st.success(f"🗑️ Automatische Suche '{search_term}' gelöscht!")
 
+# WEITERE HILFSFUNKTIONEN
+
 def show_search_details(search_term: str, searches: List[Dict]):
     """Zeigt Details einer Suchanfrage"""
     st.markdown("---")
@@ -1446,13 +1440,11 @@ def show_search_details(search_term: str, searches: List[Dict]):
     col_action1, col_action2 = st.columns(2)
     
     with col_action1:
-        repeat_key = generate_unique_key("repeat_detail", search_term)
-        if st.button("🔄 Suche wiederholen", key=repeat_key):
+        if st.button("🔄 Suche wiederholen", key=f"repeat_{search_term}"):
             execute_advanced_paper_search(search_term, 100, "Letzte 2 Jahre", False, False)
     
     with col_action2:
-        excel_key = generate_unique_key("show_excel_detail", search_term)
-        if st.button("📊 Excel anzeigen", key=excel_key):
+        if st.button("📊 Excel anzeigen", key=f"show_excel_{search_term}"):
             show_excel_sheet_content(search_term)
 
 def show_excel_sheet_content(search_term: str):
@@ -1525,7 +1517,7 @@ def show_excel_template_management():
         st.info(f"📊 **Größe:** {file_size:,} bytes | **Letzte Änderung:** {file_date.strftime('%d.%m.%Y %H:%M')}")
     else:
         st.error("❌ Master Excel-Template nicht gefunden!")
-        if st.button("🔧 Template neu erstellen", key=generate_unique_key("create_template_mgmt")):
+        if st.button("🔧 Template neu erstellen"):
             create_master_excel_template()
             st.rerun()
     
@@ -1533,14 +1525,15 @@ def show_excel_template_management():
     col_excel1, col_excel2 = st.columns(2)
     
     with col_excel1:
-        if st.button("📥 **Excel herunterladen**", key=generate_unique_key("download_template")):
-            offer_excel_download(context="template_management")
+        if st.button("📥 **Excel herunterladen**"):
+            offer_excel_download()
     
     with col_excel2:
-        if st.button("🔄 **Template zurücksetzen**", key=generate_unique_key("reset_template")):
-            reset_excel_template()
+        if st.button("🔄 **Template zurücksetzen**"):
+            if st.button("✅ Bestätigen", key="confirm_reset"):
+                reset_excel_template()
 
-def offer_excel_download(context: str = "main"):
+def offer_excel_download():
     """Bietet Master Excel-Datei zum Download an"""
     template_path = st.session_state["excel_template"]["file_path"]
     
@@ -1551,15 +1544,12 @@ def offer_excel_download(context: str = "main"):
             
             filename = f"PaperSearch_Master_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
             
-            unique_key = generate_unique_key("download_excel", context)
-            
             st.download_button(
                 label="📥 **Master Excel-Datei herunterladen**",
                 data=excel_data,
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Lädt die komplette Excel-Datei mit allen Sheets herunter",
-                key=unique_key
+                help="Lädt die komplette Excel-Datei mit allen Sheets herunter"
             )
         
         except Exception as e:
@@ -1652,14 +1642,16 @@ def show_system_settings():
     col_reset1, col_reset2 = st.columns(2)
     
     with col_reset1:
-        if st.button("🗑️ Such-Historie löschen", key=generate_unique_key("clear_search_history")):
+        if st.button("🗑️ Such-Historie löschen"):
             st.session_state["search_history"] = []
             st.success("Such-Historie gelöscht!")
     
     with col_reset2:
-        if st.button("📧 Email-Historie löschen", key=generate_unique_key("clear_email_history")):
+        if st.button("📧 Email-Historie löschen"):
             st.session_state["email_history"] = []
             st.success("Email-Historie gelöscht!")
+
+# WEITERE HILFSFUNKTIONEN
 
 def build_advanced_search_query(query: str, date_filter: str) -> str:
     """Erweiterte Suchanfrage mit Filtern"""
