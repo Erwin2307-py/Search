@@ -3320,19 +3320,8 @@ def generate_comprehensive_system_report():
                 term = search.get("search_term", "Unbekannt")
                 papers = search.get("paper_count", 0)
                 new_papers = search.get("new_papers", 0)
-                def is_email_configured() -> bool:
-    """Prüft Email-Konfiguration"""
-    settings = st.session_state.get("email_settings", {})
-    return (bool(settings.get("sender_email")) and 
-            bool(settings.get("recipient_email")) and
-            bool(settings.get("sender_password")))
 
-    def should_send_email(paper_count: int) -> bool:
-    """Prüft ob Email gesendet werden soll"""
-    settings = st.session_state.get("email_settings", {})
-    return (settings.get("auto_notifications", False) and
-            paper_count >= settings.get("min_papers", 1) and
-            is_email_configured())
+
 
 if __name__ == "__main__":
     module_email()
