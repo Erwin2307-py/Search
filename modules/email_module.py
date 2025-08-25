@@ -507,8 +507,6 @@ def check_due_searches_silent():
     except Exception as e:
         return 0
 
-
-
 def show_email_config_with_secrets():
     """Email-Konfiguration mit Secrets-Integration"""
     st.subheader("📧 Email-Konfiguration (Streamlit Secrets)")
@@ -2280,67 +2278,103 @@ def load_master_workbook():
         st.error(f"❌ Excel-Datei konnte nicht geladen werden: {str(e)}")
         return None
 def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tuple[int, List[Dict]]:
-    """Fügt neue Papers zur Excel-Datei hinzu und gibt Anzahl + neue Papers zurück"""
+    """ROBUSTE Version - Fügt neue Papers zur Excel-Datei hinzu"""
     template_path = st.session_state["excel_template"]["file_path"]
     sheet_name = generate_sheet_name(search_term)
     
     try:
-        # Lade oder erstelle Workbook
-        if os.path.exists(template_path):
-            wb = openpyxl.load_workbook(template_path)
-        else:
-            wb = openpyxl.Workbook()
-            wb.remove(wb.active)  # Entferne das Standard-Sheet
+        # 1. SICHERE Workbook-Erstellung
+        try:
+            if os.path.exists(template_path):
+                wb = openpyxl.load_workbook(template_path)
+            else:
+                wb = openpyxl.Workbook()
+                if wb.active:
+                    wb.remove(wb.active)
+        except Exception as wb_error:
+            st.error(f"❌ Workbook-Fehler: {str(wb_error)}")
+            return 0, []
         
-        # Lade vorherige Papers aus Excel - FEHLERBEHANDLUNG HINZUGEFÜGT
-        previous_papers = load_previous_search_results(search_term)
-        
-        # WICHTIG: Überprüfe ob previous_papers None ist
-        if previous_papers is None:
+        # 2. SICHERE Laden vorheriger Papers
+        previous_papers = []
+        try:
+            previous_papers = load_previous_search_results(search_term)
+            if previous_papers is None:
+                previous_papers = []
+        except Exception as load_error:
+            st.warning(f"⚠️ Fehler beim Laden vorheriger Papers: {str(load_error)}")
             previous_papers = []
         
-        # Sichere Erstellung der PMID-Set
+        # 3. SICHERE PMID-Set Erstellung
         previous_pmids = set()
-        if previous_papers:
-            for paper in previous_papers:
-                if paper and isinstance(paper, dict) and paper.get("PMID"):
-                    previous_pmids.add(paper.get("PMID"))
+        try:
+            if previous_papers and isinstance(previous_papers, list):
+                for paper in previous_papers:
+                    if paper and isinstance(paper, dict):
+                        pmid = paper.get("PMID")
+                        if pmid:
+                            previous_pmids.add(str(pmid))
+        except Exception as pmid_error:
+            st.warning(f"⚠️ Fehler bei PMID-Verarbeitung: {str(pmid_error)}")
+            previous_pmids = set()
         
-        # Identifiziere neue Papers - SICHERE ITERATION
+        # 4. SICHERE Identifikation neuer Papers
         new_papers = []
-        if current_papers:  # Überprüfe auch current_papers
-            for paper in current_papers:
-                if paper and isinstance(paper, dict):  # Sicherheitsprüfung
-                    current_pmid = paper.get("PMID", "")
-                    if current_pmid and current_pmid not in previous_pmids:
-                        paper["Status"] = "NEU"
-                        new_papers.append(paper)
-                    else:
-                        paper["Status"] = "BEKANNT"
+        try:
+            if current_papers and isinstance(current_papers, list):
+                for paper in current_papers:
+                    if paper and isinstance(paper, dict):
+                        current_pmid = str(paper.get("PMID", ""))
+                        if current_pmid and current_pmid not in previous_pmids:
+                            paper["Status"] = "NEU"
+                            new_papers.append(paper)
+                        else:
+                            paper["Status"] = "BEKANNT"
+        except Exception as new_papers_error:
+            st.error(f"❌ Fehler bei neuen Papers: {str(new_papers_error)}")
+            return 0, []
         
-        # Erstelle oder aktualisiere Sheet
-        if sheet_name not in wb.sheetnames:
-            ws = wb.create_sheet(sheet_name)
-            create_excel_sheet_headers(ws)
-        else:
-            ws = wb[sheet_name]
+        # 5. SICHERE Sheet-Erstellung/Update
+        try:
+            if sheet_name not in wb.sheetnames:
+                ws = wb.create_sheet(sheet_name)
+                create_excel_sheet_headers(ws)
+            else:
+                ws = wb[sheet_name]
+            
+            # Nur neue Papers hinzufügen
+            if new_papers:
+                add_papers_to_sheet(ws, new_papers)
+                
+        except Exception as sheet_error:
+            st.error(f"❌ Sheet-Fehler: {str(sheet_error)}")
+            return len(new_papers), new_papers  # Trotzdem neue Papers zurückgeben
         
-        # Füge nur neue Papers hinzu
-        if new_papers:
-            add_papers_to_sheet(ws, new_papers)
+        # 6. SICHERE Overview Update
+        try:
+            update_overview_sheet(wb, search_term, len(current_papers) if current_papers else 0, len(new_papers))
+        except Exception as overview_error:
+            st.warning(f"⚠️ Overview-Update Fehler: {str(overview_error)}")
+            # Weiter machen - Overview ist nicht kritisch
         
-        # Update Overview Sheet
-        update_overview_sheet(wb, search_term, len(current_papers) if current_papers else 0, len(new_papers))
-        
-        # Speichere Excel-Datei
-        wb.save(template_path)
+        # 7. SICHERE Excel-Speicherung
+        try:
+            wb.save(template_path)
+        except Exception as save_error:
+            st.error(f"❌ Speicher-Fehler: {str(save_error)}")
+            return len(new_papers), new_papers
         
         return len(new_papers), new_papers
         
     except Exception as e:
-        st.error(f"❌ Fehler beim Hinzufügen zu Excel: {str(e)}")
-        st.error(f"🔍 Debug-Info: search_term='{search_term}', current_papers_count={len(current_papers) if current_papers else 0}")
+        st.error(f"❌ **KRITISCHER FEHLER in add_new_papers_to_excel:** {str(e)}")
+        st.error(f"🔍 **Debug-Details:** search_term='{search_term}', papers={len(current_papers) if current_papers else 0}")
+        
+        # Notfall-Rückgabe - wenigstens die Papers sind verfügbar
+        if current_papers:
+            return len(current_papers), current_papers
         return 0, []
+
 
 
 def create_excel_sheet_headers(ws):
@@ -2391,51 +2425,76 @@ def add_papers_to_sheet(ws, papers: List[Dict]):
         next_row += 1
 
 def update_overview_sheet(wb, search_term: str, total_papers: int, new_papers: int):
-    """Aktualisiert das Overview-Sheet"""
-    if "📊_Overview" not in wb.sheetnames:
-        overview_sheet = wb.create_sheet("📊_Overview", 0)
+    """Aktualisiert das Overview-Sheet mit robustem Error-Handling"""
+    try:
+        if "📊_Overview" not in wb.sheetnames:
+            overview_sheet = wb.create_sheet("📊_Overview", 0)
+            
+            # Header erstellen
+            headers = [
+                "Sheet_Name", "Suchbegriff", "Anzahl_Papers", "Letztes_Update", 
+                "Neue_Papers_Letzter_Run", "Status", "Erstellt_am"
+            ]
+            
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            
+            for col, header in enumerate(headers, 1):
+                cell = overview_sheet.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+        else:
+            overview_sheet = wb["📊_Overview"]
         
-        # Header erstellen
-        headers = [
-            "Sheet_Name", "Suchbegriff", "Anzahl_Papers", "Letztes_Update", 
-            "Neue_Papers_Letzter_Run", "Status", "Erstellt_am"
-        ]
+        # ROBUSTE SUCHE nach bestehendem Eintrag
+        sheet_name = generate_sheet_name(search_term)
+        row_found = None
         
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        try:
+            # Sichere Iteration durch Zeilen
+            for row_num in range(2, overview_sheet.max_row + 1):
+                try:
+                    # Sichere Zellenabfrage
+                    cell_value = overview_sheet.cell(row=row_num, column=2).value
+                    if cell_value and str(cell_value).strip() == search_term:
+                        row_found = row_num
+                        break
+                except Exception as cell_error:
+                    # Überspringe fehlerhafte Zeilen
+                    continue
+                    
+        except Exception as iteration_error:
+            # Falls Iteration fehlschlägt, erstelle neuen Eintrag
+            row_found = None
         
-        for col, header in enumerate(headers, 1):
-            cell = overview_sheet.cell(row=1, column=col, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-    else:
-        overview_sheet = wb["📊_Overview"]
-    
-    # Suche bestehenden Eintrag oder erstelle neuen
-    sheet_name = generate_sheet_name(search_term)
-    row_found = None
-    
-    for row in overview_sheet.iter_rows(min_row=2):
-        if row[1].value == search_term:
-            row_found = row[0].row
-            break
-    
-    if row_found:
-        # Update bestehenden Eintrag
-        overview_sheet.cell(row=row_found, column=3, value=total_papers)
-        overview_sheet.cell(row=row_found, column=4, value=datetime.datetime.now().isoformat())
-        overview_sheet.cell(row=row_found, column=5, value=new_papers)
-        overview_sheet.cell(row=row_found, column=6, value="Aktualisiert")
-    else:
-        # Neuen Eintrag erstellen
-        next_row = overview_sheet.max_row + 1
-        overview_sheet.cell(row=next_row, column=1, value=sheet_name)
-        overview_sheet.cell(row=next_row, column=2, value=search_term)
-        overview_sheet.cell(row=next_row, column=3, value=total_papers)
-        overview_sheet.cell(row=next_row, column=4, value=datetime.datetime.now().isoformat())
-        overview_sheet.cell(row=next_row, column=5, value=new_papers)
-        overview_sheet.cell(row=next_row, column=6, value="Neu")
-        overview_sheet.cell(row=next_row, column=7, value=datetime.datetime.now().isoformat())
+        # Update oder erstelle Eintrag
+        if row_found:
+            # SICHERE Updates für bestehenden Eintrag
+            try:
+                overview_sheet.cell(row=row_found, column=3, value=total_papers)
+                overview_sheet.cell(row=row_found, column=4, value=datetime.datetime.now().isoformat())
+                overview_sheet.cell(row=row_found, column=5, value=new_papers)
+                overview_sheet.cell(row=row_found, column=6, value="Aktualisiert")
+            except Exception as update_error:
+                st.warning(f"⚠️ Fehler beim Update der Zeile {row_found}: {str(update_error)}")
+        else:
+            # SICHERE Erstellung eines neuen Eintrags
+            try:
+                next_row = overview_sheet.max_row + 1
+                overview_sheet.cell(row=next_row, column=1, value=sheet_name)
+                overview_sheet.cell(row=next_row, column=2, value=search_term)
+                overview_sheet.cell(row=next_row, column=3, value=total_papers)
+                overview_sheet.cell(row=next_row, column=4, value=datetime.datetime.now().isoformat())
+                overview_sheet.cell(row=next_row, column=5, value=new_papers)
+                overview_sheet.cell(row=next_row, column=6, value="Neu")
+                overview_sheet.cell(row=next_row, column=7, value=datetime.datetime.now().isoformat())
+            except Exception as create_error:
+                st.warning(f"⚠️ Fehler beim Erstellen eines neuen Eintrags: {str(create_error)}")
+                
+    except Exception as e:
+        st.error(f"❌ Kritischer Fehler in update_overview_sheet: {str(e)}")
+        # Trotzdem weiter versuchen - nicht das ganze System zum Absturz bringen
+
 
 def show_excel_sheets_overview():
     """Zeigt Übersicht aller Excel-Sheets"""
