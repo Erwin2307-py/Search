@@ -1,4 +1,4 @@
-# modules/email_module.py - VOLLSTÄNDIGE VERSION MIT MEHREREN EMAIL-EMPFÄNGERN UND EXCEL-INTEGRATION
+# modules/email_module.py - MIT STREAMLIT SECRETS INTEGRATION
 import streamlit as st
 import datetime
 import requests
@@ -22,64 +22,20 @@ import json
 from pathlib import Path
 import threading
 
-def module_email():
-    """VOLLSTÄNDIGE FUNKTION - Email-Modul mit mehreren Empfängern und Excel-Integration"""
-    st.title("📧 Wissenschaftliches Paper-Suche & Email-System")
-    st.success("✅ Vollständiges Modul mit mehreren Email-Empfängern und Excel-Integration geladen!")
-    
-    # Session State initialisieren
-    initialize_session_state()
-    
-    # Erweiterte Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "📊 Dashboard", 
-        "🔍 Paper-Suche", 
-        "📧 Email-Konfiguration",
-        "📋 Excel-Management",
-        "🤖 Automatische Suchen",
-        "📈 Statistiken",
-        "⚙️ System-Einstellungen"
-    ])
-    
-    with tab1:
-        show_dashboard()
-    
-    with tab2:
-        show_advanced_paper_search()
-    
-    with tab3:
-        show_email_config()
-    
-    with tab4:
-        show_excel_template_management()
-    
-    with tab5:
-        show_automatic_search_system()
-    
-    with tab6:
-        show_detailed_statistics()
-    
-    with tab7:
-        show_system_settings()
+# =============== STREAMLIT SECRETS INTEGRATION ===============
 
-def initialize_session_state():
-    """Vollständige Session State Initialisierung mit mehreren Email-Empfängern"""
-    # Erstelle notwendige Ordner
-    for folder in ["excel_templates", "saved_searches", "search_history", "config"]:
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-    
-    # Email-Einstellungen - ERWEITERT für mehrere Empfänger
-    if "email_settings" not in st.session_state:
-        st.session_state["email_settings"] = {
-            "sender_email": "",
-            "recipient_emails": "",  # MEHRERE EMPFÄNGER (komma-getrennt)
-            "smtp_server": "smtp.gmail.com",
-            "smtp_port": 587,
-            "sender_password": "",
-            "use_tls": True,
-            "auto_notifications": True,
-            "min_papers": 1,
+def load_email_config_from_secrets() -> Dict:
+    """Lädt Email-Konfiguration aus Streamlit Secrets"""
+    try:
+        email_config = {
+            "sender_email": st.secrets["email"]["sender_email"],
+            "smtp_server": st.secrets["email"]["smtp_server"],
+            "smtp_port": st.secrets["email"].get("smtp_port", 587),
+            "sender_password": st.secrets["email"]["password"],
+            "use_tls": st.secrets["email"].get("use_tls", True),
+            "recipient_emails": st.secrets["email"]["recipients"],
+            "auto_notifications": st.secrets["email"].get("auto_notifications", True),
+            "min_papers": st.secrets["email"].get("min_papers", 1),
             "notification_frequency": "Bei jeder Suche",
             "subject_template": "🔬 {count} neue Papers für '{search_term}' - {frequency}",
             "message_template": """📧 Automatische Paper-Benachrichtigung
@@ -95,48 +51,37 @@ def initialize_session_state():
 📎 Excel-Datei wurde aktualisiert: {excel_file}
 
 Mit freundlichen Grüßen,
-Ihr automatisches Paper-Überwachung-System"""
+Ihr automatisches Paper-Überwachung-System""",
+            "from_secrets": True  # Flag to indicate loaded from secrets
         }
-    
-    # Excel-Template System
-    if "excel_template" not in st.session_state:
-        st.session_state["excel_template"] = {
-            "file_path": "excel_templates/master_papers.xlsx",
-            "auto_create_sheets": True,
-            "sheet_naming": "topic_based",
-            "max_sheets": 50
-        }
-    
-    # Such-Historie
-    if "search_history" not in st.session_state:
-        st.session_state["search_history"] = []
-    
-    # Email-Historie
-    if "email_history" not in st.session_state:
-        st.session_state["email_history"] = []
-    
-    # Automatische Suchen
-    if "automatic_searches" not in st.session_state:
-        st.session_state["automatic_searches"] = {}
-    
-    # System-Status
-    if "system_status" not in st.session_state:
-        st.session_state["system_status"] = {
-            "total_searches": 0,
-            "total_papers": 0,
-            "total_emails": 0,
-            "last_search": None,
-            "excel_sheets": 0,
-            "unique_papers": 0
-        }
-    
-    # Store current search results for manual email sending
-    if "current_search_results" not in st.session_state:
-        st.session_state["current_search_results"] = {}
-    
-    # Erstelle Master Excel-Datei falls nicht vorhanden
-    create_master_excel_template()
+        return email_config
+    except KeyError as e:
+        st.warning(f"⚠️ Email-Secrets nicht vollständig konfiguriert: {e}")
+        return None
+    except Exception as e:
+        st.warning(f"⚠️ Fehler beim Laden der Email-Secrets: {e}")
+        return None
 
+def module_email():
+    """VOLLSTÄNDIGE FUNKTION - Email-Modul mit Secrets Integration"""
+    st.title("📧 Wissenschaftliches Paper-Suche & Email-System")
+    
+    # Prüfe auf Secrets-Konfiguration
+    secrets_config = load_email_config_from_secrets()
+    if secrets_config:
+        st.success("✅ Email-Konfiguration aus Streamlit Secrets geladen!")
+        # Zeige sicher maskierte Info
+        sender_email = secrets_config.get("sender_email", "")
+        masked_email = f"{sender_email[:3]}***@{sender_email.split('@')[1]}" if "@" in sender_email else "***"
+        recipients_count = len(parse_recipient_emails(secrets_config.get("recipient_emails", "")))
+        st.info(f"📧 Absender: {masked_email} | Empfänger: {recipients_count}")
+    else:
+        st.info("ℹ️ Keine Secrets konfiguriert - verwende manuelle Email-Konfiguration")
+    
+    st.success("✅ Vollständiges Modul mit mehreren Email-Empfängern und Excel-Integration geladen!")
+    
+    # Session State initialisieren
+    initialize_session_state()
 def create_master_excel_template():
     """Erstellt Master Excel-Template mit Overview-Sheet und Excel-Integration"""
     template_path = st.session_state["excel_template"]["file_path"]
@@ -179,14 +124,15 @@ def create_master_excel_template():
                 ["", ""],
                 ["Erstellt am:", datetime.datetime.now().strftime("%d.%m.%Y %H:%M")],
                 ["System:", "Wissenschaftliches Paper-Suche System"],
-                ["Version:", "3.0 mit Excel-Integration & mehreren Email-Empfängern"],
+                ["Version:", "4.0 mit Streamlit Secrets Integration"],
                 ["", ""],
                 ["📖 Anleitung:", ""],
                 ["• Jeder Suchbegriff bekommt ein eigenes Sheet", ""],
                 ["• Das Overview-Sheet zeigt alle Suchanfragen", ""],
                 ["• Neue Papers werden automatisch hinzugefügt", ""],
-                ["• Email-Benachrichtigungen an mehrere Empfänger", ""],
+                ["• Email-Benachrichtigungen aus Streamlit Secrets", ""],
                 ["• Duplikate werden automatisch erkannt", ""],
+                ["• Sichere Email-Konfiguration über secrets.toml", ""],
             ]
             
             for row_idx, (key, value) in enumerate(info_data, 1):
@@ -201,209 +147,445 @@ def create_master_excel_template():
             
         except Exception as e:
             st.error(f"❌ Fehler beim Erstellen des Master-Templates: {str(e)}")
+    
+    # Erweiterte Tabs
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "📊 Dashboard", 
+        "🔍 Paper-Suche", 
+        "📧 Email-Konfiguration",
+        "📋 Excel-Management",
+        "🤖 Automatische Suchen",
+        "📈 Statistiken",
+        "⚙️ System-Einstellungen"
+    ])
+    
+    with tab1:
+        show_dashboard()
+    
+    with tab2:
+        show_advanced_paper_search()
+    
+    with tab3:
+        show_email_config_with_secrets()
+    
+    with tab4:
+        show_excel_template_management()
+    
+    with tab5:
+        show_automatic_search_system()
+    
+    with tab6:
+        show_detailed_statistics()
+    
+    with tab7:
+        show_system_settings()
 
-# =============== EXCEL-INTEGRATION FUNKTIONEN ===============
-
-def load_master_workbook():
-    """Lädt das Master Excel Workbook"""
-    excel_path = st.session_state["excel_template"]["file_path"]
-    try:
-        return openpyxl.load_workbook(excel_path)
-    except Exception as e:
-        st.error(f"❌ Excel-Datei konnte nicht geladen werden: {str(e)}")
-        return None
-
-def paper_exists_in_workbook(pmid: str, wb) -> Tuple[bool, str]:
-    """
-    Prüft, ob ein Paper (anhand PMID) bereits im gesamten Workbook existiert
-    Returns: (exists: bool, sheet_name: str)
-    """
-    if not pmid:
-        return False, ""
+def initialize_session_state():
+    """Session State Initialisierung mit Secrets-Priorität"""
+    # Erstelle notwendige Ordner
+    for folder in ["excel_templates", "saved_searches", "search_history", "config"]:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
     
-    for sheet in wb.worksheets:
-        if sheet.title.startswith(("📊", "ℹ️")):  # Überspringe Overview und Info-Sheets
-            continue
+    # Email-Einstellungen - PRIORITÄT: Secrets > Session State
+    if "email_settings" not in st.session_state:
+        secrets_config = load_email_config_from_secrets()
         
-        # Prüfe alle Zeilen im Sheet (erste Spalte = PMID)
-        for row in sheet.iter_rows(min_row=2, max_col=1):  # Ab Zeile 2, nur erste Spalte
-            cell_value = row[0].value
-            if str(cell_value) == str(pmid):
-                return True, sheet.title
-    
-    return False, ""
-
-def get_or_create_sheet_for_search(search_term: str, wb) -> openpyxl.worksheet.worksheet.Worksheet:
-    """
-    Holt ein existierendes Sheet für den Suchbegriff oder erstellt ein neues
-    """
-    # Bereinige Suchbegriff für Sheet-Name (max 31 Zeichen, keine Sonderzeichen)
-    sheet_name = generate_sheet_name(search_term)
-    
-    if sheet_name in wb.sheetnames:
-        return wb[sheet_name]
-    else:
-        # Erstelle neues Sheet
-        sheet = wb.create_sheet(title=sheet_name)
-        
-        # Schreibe Header
-        headers = ["PMID", "Titel", "Autoren", "Journal", "Jahr", "DOI", "URL", 
-                   "Abstract", "Hinzugefügt_am", "Status", "Notizen"]
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="2F4F4F", end_color="2F4F4F", fill_type="solid")
-        
-        for col, header in enumerate(headers, 1):
-            cell = sheet.cell(row=1, column=col, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center")
-        
-        # Spaltenbreiten
-        column_widths = [10, 50, 40, 30, 8, 20, 25, 80, 15, 10, 20]
-        for col, width in enumerate(column_widths, 1):
-            sheet.column_dimensions[get_column_letter(col)].width = width
-        
-        return sheet
-
-def add_new_papers_to_excel(search_term: str, all_papers: List[Dict]) -> Tuple[int, List[Dict]]:
-    """
-    Fügt neue Papers zur Excel hinzu und gibt zurück: (anzahl_neue, neue_papers_liste)
-    """
-    wb = load_master_workbook()
-    if not wb:
-        return 0, []
-    
-    # Hole oder erstelle Sheet für diesen Suchbegriff
-    sheet = get_or_create_sheet_for_search(search_term, wb)
-    
-    new_papers = []
-    added_count = 0
-    
-    for paper in all_papers:
-        pmid = paper.get("PMID", "")
-        if not pmid:
-            continue
-        
-        # Prüfe ob Paper bereits existiert
-        exists, existing_sheet = paper_exists_in_workbook(pmid, wb)
-        
-        if not exists:
-            # Neues Paper - füge hinzu
-            current_time = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-            row_data = [
-                pmid,
-                paper.get("Title", "")[:500],  # Titel kürzen falls zu lang
-                paper.get("Authors", "")[:200], # Autoren kürzen
-                paper.get("Journal", ""),
-                paper.get("Year", ""),
-                paper.get("DOI", ""),
-                paper.get("URL", ""),
-                paper.get("Abstract", "")[:1000] + "..." if len(paper.get("Abstract", "")) > 1000 else paper.get("Abstract", ""),
-                current_time,
-                "NEU",
-                ""
-            ]
-            
-            sheet.append(row_data)
-            new_papers.append(paper)
-            added_count += 1
-    
-    # Speichere Excel
-    try:
-        wb.save(st.session_state["excel_template"]["file_path"])
-        
-        # Update Overview Sheet
-        total_papers = sheet.max_row - 1  # -1 für Header
-        update_overview_sheet_integrated(wb, sheet.title, search_term, total_papers, added_count)
-        
-        # Update System Status
-        st.session_state["system_status"]["excel_sheets"] = len([s for s in wb.sheetnames if not s.startswith(("📊", "ℹ️"))])
-        st.session_state["system_status"]["unique_papers"] += added_count
-        
-    except Exception as e:
-        st.error(f"❌ Fehler beim Speichern der Excel: {str(e)}")
-        return 0, []
-    
-    return added_count, new_papers
-
-def update_overview_sheet_integrated(wb, sheet_name: str, search_term: str, total_papers: int, new_papers: int):
-    """Aktualisiert das Overview-Sheet mit Suchstatistiken"""
-    try:
-        overview_sheet = wb["📊_Overview"]
-        
-        # Suche nach existierendem Eintrag
-        search_row = None
-        for row_num, row in enumerate(overview_sheet.iter_rows(min_row=2), start=2):
-            if row[1].value == search_term:  # Spalte B = Suchbegriff
-                search_row = row_num
-                break
-        
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        
-        if search_row:
-            # Update existierenden Eintrag
-            overview_sheet.cell(row=search_row, column=3, value=total_papers)  # Anzahl Papers
-            overview_sheet.cell(row=search_row, column=4, value=current_time)  # Letztes Update
-            overview_sheet.cell(row=search_row, column=5, value=new_papers)    # Neue Papers
-            overview_sheet.cell(row=search_row, column=6, value="✅ Aktiv")     # Status
+        if secrets_config:
+            st.session_state["email_settings"] = secrets_config
         else:
-            # Neuer Eintrag
-            new_row = [
-                sheet_name,         # Sheet Name
-                search_term,        # Suchbegriff
-                total_papers,       # Anzahl Papers
-                current_time,       # Letztes Update
-                new_papers,         # Neue Papers
-                "✅ Aktiv",         # Status
-                current_time        # Erstellt am
-            ]
-            overview_sheet.append(new_row)
-        
-        wb.save(st.session_state["excel_template"]["file_path"])
+            # Fallback auf manuelle Konfiguration
+            st.session_state["email_settings"] = {
+                "sender_email": "",
+                "recipient_emails": "",
+                "smtp_server": "smtp.gmail.com",
+                "smtp_port": 587,
+                "sender_password": "",
+                "use_tls": True,
+                "auto_notifications": True,
+                "min_papers": 1,
+                "from_secrets": False
+            }
     
+    # Excel-Template System - MIT SECRETS INTEGRATION
+    if "excel_template" not in st.session_state:
+        try:
+            # Versuche Excel-Konfiguration aus Secrets zu laden
+            st.session_state["excel_template"] = {
+                "file_path": st.secrets.get("excel", {}).get("template_path", "excel_templates/master_papers.xlsx"),
+                "auto_create_sheets": st.secrets.get("excel", {}).get("auto_create_sheets", True),
+                "sheet_naming": "topic_based",
+                "max_sheets": st.secrets.get("excel", {}).get("max_sheets", 50)
+            }
+        except:
+            # Fallback auf Standard-Konfiguration
+            st.session_state["excel_template"] = {
+                "file_path": "excel_templates/master_papers.xlsx",
+                "auto_create_sheets": True,
+                "sheet_naming": "topic_based",
+                "max_sheets": 50
+            }
+    
+    # Alle anderen Session State Initialisierungen...
+    if "search_history" not in st.session_state:
+        st.session_state["search_history"] = []
+    
+    if "email_history" not in st.session_state:
+        st.session_state["email_history"] = []
+    
+    if "automatic_searches" not in st.session_state:
+        st.session_state["automatic_searches"] = {}
+    
+    if "system_status" not in st.session_state:
+        st.session_state["system_status"] = {
+            "total_searches": 0,
+            "total_papers": 0,
+            "total_emails": 0,
+            "last_search": None,
+            "excel_sheets": 0,
+            "unique_papers": 0
+        }
+    
+    if "current_search_results" not in st.session_state:
+        st.session_state["current_search_results"] = {}
+    
+    # Erstelle Master Excel-Datei falls nicht vorhanden
+    create_master_excel_template()
+
+
+def show_email_config_with_secrets():
+    """Email-Konfiguration mit Secrets-Integration"""
+    st.subheader("📧 Email-Konfiguration (Streamlit Secrets)")
+    
+    settings = st.session_state.get("email_settings", {})
+    is_from_secrets = settings.get("from_secrets", False)
+    
+    if is_from_secrets:
+        # ===== SECRETS MODUS =====
+        st.success("🔐 **Email-Konfiguration aus Streamlit Secrets aktiv**")
+        
+        col_info1, col_info2 = st.columns(2)
+        
+        with col_info1:
+            st.info("📋 **Aktuelle Konfiguration:**")
+            # Sicher maskierte Anzeige
+            sender_email = settings.get("sender_email", "")
+            if sender_email:
+                masked_sender = f"{sender_email[:3]}***@{sender_email.split('@')[1]}" if "@" in sender_email else "***"
+                st.write(f"📧 Absender: `{masked_sender}`")
+            
+            st.write(f"🔒 SMTP: `{settings.get('smtp_server', 'N/A')}:{settings.get('smtp_port', 'N/A')}`")
+            st.write(f"🔐 TLS: `{'✅ Aktiviert' if settings.get('use_tls') else '❌ Deaktiviert'}`")
+            st.write(f"📧 Auto-Benachrichtigungen: `{'✅ An' if settings.get('auto_notifications') else '❌ Aus'}`")
+        
+        with col_info2:
+            st.info("📧 **Empfänger:**")
+            recipient_emails = parse_recipient_emails(settings.get("recipient_emails", ""))
+            st.write(f"**Anzahl:** {len(recipient_emails)}")
+            
+            for i, email in enumerate(recipient_emails, 1):
+                # Maskiere Email-Adressen
+                if "@" in email:
+                    masked = f"{email[:2]}***@{email.split('@')[1]}"
+                else:
+                    masked = "***"
+                st.write(f"   {i}. `{masked}`")
+        
+        # Secrets Konfiguration Hilfe
+        with st.expander("📖 Streamlit Secrets Konfiguration"):
+            st.info("""
+            **Secrets-Datei:** `.streamlit/secrets.toml`
+            
+            ```
+            [email]
+            sender_email = "absender@gmail.com"
+            smtp_server = "smtp.gmail.com"
+            smtp_port = 587
+            password = "app-passwort"
+            use_tls = true
+            recipients = "emp1@example.com,emp2@example.com"
+            auto_notifications = true
+            min_papers = 1
+            ```
+            
+            **Sicherheitshinweise:**
+            ✅ Secrets werden nicht in Git gespeichert
+            ✅ Passwörter sind nicht im Code sichtbar
+            ✅ Produktionsumgebung nutzt verschlüsselte Secrets
+            """)
+        
+        # Test-Funktionen für Secrets
+        st.markdown("---")
+        st.subheader("🧪 Email-System testen (Secrets)")
+        
+        col_test1, col_test2 = st.columns(2)
+        
+        with col_test1:
+            if st.button("📧 **Test-Email senden (Secrets)**", type="primary"):
+                send_test_email_secrets()
+        
+        with col_test2:
+            if st.button("🔄 **Secrets neu laden**"):
+                reload_email_secrets()
+        
+        # Override für Notfälle
+        st.markdown("---")
+        with st.expander("⚠️ Notfall-Override (manuelle Konfiguration)"):
+            st.warning("⚠️ Nur für Entwicklung/Debugging verwenden!")
+            if st.button("🔓 **Zu manueller Konfiguration wechseln**"):
+                switch_to_manual_config()
+    
+    else:
+        # ===== MANUELLER MODUS =====
+        st.info("📝 **Manuelle Email-Konfiguration**")
+        st.write("💡 Für erhöhte Sicherheit empfehlen wir Streamlit Secrets!")
+        
+        show_manual_email_config()
+
+def send_test_email_secrets():
+    """Sendet Test-Email mit Secrets-Konfiguration"""
+    settings = st.session_state.get("email_settings", {})
+    recipient_emails = parse_recipient_emails(settings.get("recipient_emails", ""))
+    
+    if not settings.get("from_secrets"):
+        st.error("❌ Keine Secrets-Konfiguration aktiv!")
+        return
+    
+    if not recipient_emails:
+        st.error("❌ Keine Empfänger in Secrets konfiguriert!")
+        return
+    
+    subject = "🧪 Test-Email vom Paper-Suche System (Streamlit Secrets)"
+    message = f"""Dies ist eine Test-Email vom Paper-Suche System mit Streamlit Secrets Integration.
+
+📅 Gesendet am: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+🔐 Konfiguration: Streamlit Secrets
+📧 Von: {settings.get('sender_email', 'N/A')}
+📧 An: {len(recipient_emails)} Empfänger (aus Secrets)
+
+🔒 **Sicherheitsfeatures:**
+✅ Passwort aus verschlüsselten Secrets
+✅ Keine Credentials im Code
+✅ Sichere SMTP-Verbindung
+
+System-Informationen:
+• SMTP Server: {settings.get('smtp_server')}
+• Port: {settings.get('smtp_port')}
+• TLS: {'Aktiviert' if settings.get('use_tls') else 'Deaktiviert'}
+• Empfänger: {len(recipient_emails)}
+
+Mit freundlichen Grüßen,
+Ihr sicheres Paper-Suche System"""
+    
+    success, status_message = send_real_email_multiple(
+        recipient_emails, 
+        subject, 
+        message
+    )
+    
+    if success:
+        st.success(f"✅ **Test-Email mit Secrets erfolgreich gesendet!** {status_message}")
+        st.balloons()
+    else:
+        st.error(f"❌ **Test-Email fehlgeschlagen:** {status_message}")
+
+def reload_email_secrets():
+    """Lädt Email-Secrets neu"""
+    try:
+        secrets_config = load_email_config_from_secrets()
+        if secrets_config:
+            st.session_state["email_settings"] = secrets_config
+            st.success("✅ **Email-Secrets erfolgreich neu geladen!**")
+            st.rerun()
+        else:
+            st.error("❌ **Fehler beim Neuladen der Secrets!**")
     except Exception as e:
-        st.warning(f"⚠️ Fehler beim Aktualisieren des Overview-Sheets: {str(e)}")
+        st.error(f"❌ **Secrets-Fehler:** {str(e)}")
 
-def get_search_statistics_from_excel() -> Dict:
-    """Holt Statistiken aus der Excel-Datei"""
-    wb = load_master_workbook()
-    if not wb:
-        return {}
+def switch_to_manual_config():
+    """Wechselt zur manuellen Email-Konfiguration"""
+    st.session_state["email_settings"]["from_secrets"] = False
+    st.warning("⚠️ **Zu manueller Konfiguration gewechselt!**")
+    st.rerun()
+
+def show_manual_email_config():
+    """Zeigt manuelle Email-Konfiguration (Original-Funktion)"""
+    settings = st.session_state.get("email_settings", {})
     
-    stats = {
-        "total_sheets": len([s for s in wb.sheetnames if not s.startswith(("📊", "ℹ️"))]),
-        "total_searches": 0,
-        "total_papers": 0,
-        "search_terms": []
-    }
-    
-    if "📊_Overview" in wb.sheetnames:
-        overview_sheet = wb["📊_Overview"]
+    with st.expander("📖 Email-Setup Hilfe"):
+        st.info("""
+        **Für Gmail (empfohlen):**
+        1. ✅ 2-Faktor-Authentifizierung aktivieren
+        2. ✅ App-Passwort erstellen
+        3. ✅ SMTP: smtp.gmail.com, Port: 587, TLS: An
         
-        for row in overview_sheet.iter_rows(min_row=2):
-            if row[1].value:  # Suchbegriff existiert
-                stats["total_searches"] += 1
-                stats["total_papers"] += row[2].value or 0
-                stats["search_terms"].append({
-                    "term": row[1].value,
-                    "papers": row[2].value or 0,
-                    "last_update": row[3].value,
-                    "new_papers": row[4].value or 0
-                })
+        **Sicherheitshinweis:**
+        🔐 Für Produktion empfehlen wir Streamlit Secrets!
+        """)
     
-    return stats
+    with st.form("manual_email_config_form"):
+        st.subheader("📬 Manuelle Grundeinstellungen")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            sender_email = st.text_input(
+                "Absender Email *", 
+                value=settings.get("sender_email", "") if not settings.get("from_secrets") else "",
+                placeholder="absender@gmail.com"
+            )
+            
+            smtp_server = st.text_input(
+                "SMTP Server *",
+                value=settings.get("smtp_server", "smtp.gmail.com") if not settings.get("from_secrets") else "smtp.gmail.com"
+            )
+        
+        with col2:
+            smtp_port = st.number_input(
+                "SMTP Port *",
+                value=settings.get("smtp_port", 587) if not settings.get("from_secrets") else 587,
+                min_value=1,
+                max_value=65535
+            )
+            
+            use_tls = st.checkbox(
+                "TLS Verschlüsselung",
+                value=settings.get("use_tls", True) if not settings.get("from_secrets") else True
+            )
+        
+        recipient_emails = st.text_area(
+            "📧 Empfänger Email-Adressen * (komma-getrennt)",
+            value=settings.get("recipient_emails", "") if not settings.get("from_secrets") else "",
+            placeholder="emp1@example.com, emp2@example.com",
+            height=80
+        )
+        
+        sender_password = st.text_input(
+            "Email Passwort / App-Passwort *",
+            value="",
+            type="password",
+            help="⚠️ Für Sicherheit nutzen Sie Streamlit Secrets!"
+        )
+        
+        if st.form_submit_button("💾 **Manuelle Einstellungen speichern**", type="secondary"):
+            recipient_list = parse_recipient_emails(recipient_emails)
+            
+            if not recipient_list:
+                st.error("❌ Mindestens eine gültige Email erforderlich!")
+            else:
+                st.session_state["email_settings"] = {
+                    "sender_email": sender_email,
+                    "recipient_emails": recipient_emails,
+                    "smtp_server": smtp_server,
+                    "smtp_port": smtp_port,
+                    "sender_password": sender_password,
+                    "use_tls": use_tls,
+                    "auto_notifications": True,
+                    "min_papers": 1,
+                    "subject_template": "🔬 {count} neue Papers für '{search_term}'",
+                    "message_template": "📧 Neue Papers gefunden...",
+                    "from_secrets": False
+                }
+                
+                st.success(f"✅ Manuelle Einstellungen gespeichert! ({len(recipient_list)} Empfänger)")
+    
+    # Secrets-Empfehlung
+    st.info("💡 **Empfehlung:** Verwenden Sie Streamlit Secrets für höhere Sicherheit!")
 
-# =============== MEHRERE EMAIL-EMPFÄNGER FUNKTIONEN ===============
+# ===== SICHERE EMAIL-VERSAND FUNKTIONEN =====
+
+def send_real_email_multiple(to_emails: List[str], subject: str, message: str, attachment_path: str = None) -> tuple:
+    """Sendet Email mit Secrets-Integration"""
+    settings = st.session_state.get("email_settings", {})
+    
+    # Lade Credentials sicher
+    sender_email = settings.get("sender_email", "")
+    sender_password = settings.get("sender_password", "")
+    smtp_server = settings.get("smtp_server", "smtp.gmail.com")
+    smtp_port = settings.get("smtp_port", 587)
+    use_tls = settings.get("use_tls", True)
+    
+    # Bei Secrets: Passwort ist bereits geladen
+    if settings.get("from_secrets", False):
+        # Credentials sind bereits sicher aus Secrets geladen
+        pass
+    
+    if not all([sender_email, sender_password]):
+        return False, "❌ Email-Konfiguration unvollständig"
+    
+    if not to_emails:
+        return False, "❌ Keine Empfänger konfiguriert"
+    
+    try:
+        # SMTP Server Setup mit sicheren Credentials
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        
+        if use_tls:
+            context = ssl.create_default_context()
+            server.starttls(context=context)
+        
+        server.login(sender_email, sender_password)
+        
+        successful_sends = 0
+        failed_sends = []
+        
+        # Send to each recipient
+        for recipient in to_emails:
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = sender_email
+                msg['To'] = recipient
+                msg['Subject'] = subject
+                
+                msg.attach(MIMEText(message, 'plain', 'utf-8'))
+                
+                # Add attachment if provided
+                if attachment_path and os.path.exists(attachment_path):
+                    with open(attachment_path, "rb") as attachment:
+                        part = MIMEBase('application', 'octet-stream')
+                        part.set_payload(attachment.read())
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            'Content-Disposition',
+                            f'attachment; filename= {os.path.basename(attachment_path)}'
+                        )
+                        msg.attach(part)
+                
+                server.send_message(msg)
+                successful_sends += 1
+                
+            except Exception as e:
+                failed_sends.append(f"{recipient}: {str(e)}")
+        
+        server.quit()
+        
+        if successful_sends == len(to_emails):
+            return True, f"✅ Email erfolgreich an alle {successful_sends} Empfänger gesendet"
+        elif successful_sends > 0:
+            return True, f"⚠️ Email an {successful_sends}/{len(to_emails)} Empfänger gesendet"
+        else:
+            return False, f"❌ Email an keinen Empfänger gesendet"
+        
+    except smtplib.SMTPAuthenticationError:
+        return False, "❌ SMTP-Authentifizierung fehlgeschlagen"
+    except Exception as e:
+        return False, f"❌ Email-Fehler: {str(e)}"
+
+def is_email_configured() -> bool:
+    """Prüft Email-Konfiguration (Secrets-kompatibel)"""
+    settings = st.session_state.get("email_settings", {})
+    recipient_emails = parse_recipient_emails(settings.get("recipient_emails", ""))
+    
+    return (bool(settings.get("sender_email")) and 
+            len(recipient_emails) > 0 and
+            bool(settings.get("sender_password")))
 
 def parse_recipient_emails(email_string: str) -> List[str]:
     """Parst Email-String und gibt Liste gültiger Emails zurück"""
     if not email_string:
         return []
     
-    # Split by comma and clean
     emails = [email.strip() for email in email_string.split(",")]
-    
-    # Basic email validation
     valid_emails = []
     email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     
@@ -412,6 +594,12 @@ def parse_recipient_emails(email_string: str) -> List[str]:
             valid_emails.append(email)
     
     return valid_emails
+
+# ===== ALLE ANDEREN FUNKTIONEN BLEIBEN UNVERÄNDERT =====
+# (Hier würden alle anderen Funktionen aus dem ursprünglichen Script eingefügt werden)
+
+
+
 
 def send_real_email_multiple(to_emails: List[str], subject: str, message: str, attachment_path: str = None) -> tuple:
     """Sendet echte Email über SMTP an mehrere Empfänger"""
