@@ -2539,6 +2539,203 @@ def should_send_email(paper_count: int) -> bool:
     return (settings.get("auto_notifications", False) and
             paper_count >= settings.get("min_papers", 1) and
             is_email_configured())
+def show_automatic_search_system():
+    """Automatisches Such-System (vereinfacht ohne schedule)"""
+    st.subheader("🤖 Automatisches Such-System")
+    
+    st.info("""
+    💡 **Hinweis:** Diese Version funktioniert ohne das 'schedule' Paket.
+    Automatische Suchen können manuell ausgeführt werden.
+    """)
+    
+    # Automatische Suchen verwalten
+    auto_searches = st.session_state.get("automatic_searches", {})
+    
+    # Neue automatische Suche erstellen
+    with st.expander("➕ Neue automatische Suche erstellen"):
+        with st.form("create_auto_search"):
+            col_auto1, col_auto2 = st.columns(2)
+            
+            with col_auto1:
+                auto_search_term = st.text_input(
+                    "Suchbegriff",
+                    placeholder="z.B. 'diabetes genetics', 'COVID-19 treatment'"
+                )
+                
+                auto_frequency = st.selectbox(
+                    "Häufigkeit",
+                    ["Täglich", "Wöchentlich", "Monatlich"],
+                    index=1
+                )
+            
+            with col_auto2:
+                auto_max_papers = st.number_input(
+                    "Max. Papers pro Suche",
+                    min_value=10,
+                    max_value=200,
+                    value=50
+                )
+                
+                auto_email_enabled = st.checkbox(
+                    "Email-Benachrichtigungen",
+                    value=True
+                )
+            
+            if st.form_submit_button("🤖 **Automatische Suche erstellen**", type="primary"):
+                if auto_search_term:
+                    create_automatic_search(auto_search_term, auto_frequency, auto_max_papers, auto_email_enabled)
+                else:
+                    st.error("❌ Suchbegriff ist erforderlich!")
+    
+    # Bestehende automatische Suchen anzeigen
+    if auto_searches:
+        st.markdown("---")
+        st.subheader(f"🤖 Konfigurierte automatische Suchen ({len(auto_searches)})")
+        
+        for search_id, search_config in auto_searches.items():
+            search_term = search_config.get("search_term", "Unbekannt")
+            frequency = search_config.get("frequency", "Unbekannt")
+            last_run = search_config.get("last_run", "Nie")
+            
+            with st.expander(f"🤖 **{search_term}** ({frequency})"):
+                col_config1, col_config2 = st.columns([2, 1])
+                
+                with col_config1:
+                    st.write(f"**🔍 Suchbegriff:** {search_term}")
+                    st.write(f"**⏰ Häufigkeit:** {frequency}")
+                    st.write(f"**📧 Email:** {'✅' if search_config.get('email_enabled', False) else '❌'}")
+                    st.write(f"**🕒 Letzter Lauf:** {last_run[:19] if last_run != 'Nie' else 'Nie'}")
+                
+                with col_config2:
+                    if st.button("▶️ Jetzt ausführen", key=f"run_auto_{search_id}"):
+                        run_automatic_search_simple(search_config)
+                    
+                    if st.button("🗑️ Löschen", key=f"delete_auto_{search_id}"):
+                        delete_automatic_search(search_id)
+                        st.rerun()
+        
+        # Globale Aktionen
+        st.markdown("---")
+        col_global1, col_global2 = st.columns(2)
+        
+        with col_global1:
+            if st.button("▶️ **Alle automatischen Suchen ausführen**", type="primary"):
+                run_all_automatic_searches_simple()
+        
+        with col_global2:
+            if st.button("🔄 **Status aktualisieren**"):
+                st.rerun()
+    
+    else:
+        st.info("📭 Noch keine automatischen Suchen konfiguriert.")
+
+def create_automatic_search(search_term: str, frequency: str, max_papers: int, email_enabled: bool):
+    """Erstellt neue automatische Suche"""
+    search_id = f"auto_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    search_config = {
+        "search_id": search_id,
+        "search_term": search_term,
+        "frequency": frequency,
+        "max_papers": max_papers,
+        "email_enabled": email_enabled,
+        "created_date": datetime.datetime.now().isoformat(),
+        "last_run": "Nie",
+        "total_runs": 0
+    }
+    
+    st.session_state["automatic_searches"][search_id] = search_config
+    
+    st.success(f"✅ **Automatische Suche erstellt:** '{search_term}' ({frequency})")
+
+def run_automatic_search_simple(search_config: Dict):
+    """Führt eine automatische Suche aus (vereinfacht)"""
+    search_term = search_config.get("search_term", "")
+    max_papers = search_config.get("max_papers", 50)
+    email_enabled = search_config.get("email_enabled", False)
+    
+    st.info(f"🤖 Führe automatische Suche aus: '{search_term}'")
+    
+    try:
+        # Führe Excel-integrierte Suche durch
+        execute_excel_integrated_search(search_term, max_papers, "Letzte 2 Jahre", email_enabled, False)
+        
+        # Update Konfiguration
+        search_config["last_run"] = datetime.datetime.now().isoformat()
+        search_config["total_runs"] = search_config.get("total_runs", 0) + 1
+        
+        st.success(f"✅ Automatische Suche für '{search_term}' abgeschlossen!")
+        
+    except Exception as e:
+        st.error(f"❌ Fehler bei automatischer Suche '{search_term}': {str(e)}")
+
+def run_all_automatic_searches_simple():
+    """Führt alle automatischen Suchen aus (vereinfacht)"""
+    auto_searches = st.session_state.get("automatic_searches", {})
+    
+    if not auto_searches:
+        st.info("📭 Keine automatischen Suchen konfiguriert.")
+        return
+    
+    st.info(f"🤖 Führe {len(auto_searches)} automatische Suchen aus...")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    total_new_papers = 0
+    
+    for i, search_config in enumerate(auto_searches.values()):
+        search_term = search_config.get("search_term", "")
+        try:
+            status_text.text(f"🔍 Automatische Suche {i+1}/{len(auto_searches)}: '{search_term}'...")
+            
+            # Führe Suche durch
+            current_papers = perform_comprehensive_pubmed_search(search_term, search_config.get("max_papers", 50))
+            
+            if current_papers:
+                # Füge neue Papers zur Excel hinzu
+                added_count, new_papers = add_new_papers_to_excel(search_term, current_papers)
+                
+                if added_count > 0:
+                    # Sende Email wenn konfiguriert
+                    if search_config.get("email_enabled", False) and should_send_email(added_count):
+                        send_excel_integrated_email_multiple(search_term, new_papers, len(current_papers), added_count)
+                    
+                    total_new_papers += added_count
+                    st.write(f"✅ **{search_term}:** {added_count} neue Papers")
+                else:
+                    st.write(f"ℹ️ **{search_term}:** Keine neuen Papers")
+                
+                # Update Konfiguration
+                search_config["last_run"] = datetime.datetime.now().isoformat()
+                search_config["total_runs"] = search_config.get("total_runs", 0) + 1
+            else:
+                st.write(f"⚠️ **{search_term}:** Keine Papers gefunden")
+            
+            # Progress update
+            progress_bar.progress((i + 1) / len(auto_searches))
+            time.sleep(1)  # Rate limiting
+            
+        except Exception as e:
+            st.error(f"❌ Fehler bei automatischer Suche '{search_term}': {str(e)}")
+            continue
+    
+    progress_bar.empty()
+    status_text.empty()
+    
+    # Ergebnis
+    if total_new_papers > 0:
+        st.success(f"🎉 **Alle automatischen Suchen abgeschlossen!** {total_new_papers} neue Papers insgesamt gefunden!")
+        st.balloons()
+    else:
+        st.info("ℹ️ **Alle automatischen Suchen abgeschlossen.** Keine neuen Papers gefunden.")
+
+def delete_automatic_search(search_id: str):
+    """Löscht automatische Suche"""
+    if search_id in st.session_state["automatic_searches"]:
+        search_term = st.session_state["automatic_searches"][search_id].get("search_term", "Unbekannt")
+        del st.session_state["automatic_searches"][search_id]
+        st.success(f"🗑️ Automatische Suche '{search_term}' gelöscht!")
 
 if __name__ == "__main__":
     module_email()
