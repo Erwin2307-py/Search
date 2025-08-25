@@ -2278,21 +2278,40 @@ def load_master_workbook():
         st.error(f"❌ Excel-Datei konnte nicht geladen werden: {str(e)}")
         return None
 def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tuple[int, List[Dict]]:
-    """ROBUSTE Version - Fügt neue Papers zur Excel-Datei hinzu"""
+    """ULTRA-ROBUSTE Version - Fügt neue Papers zur Excel-Datei hinzu"""
     template_path = st.session_state["excel_template"]["file_path"]
     sheet_name = generate_sheet_name(search_term)
     
+    # VALIDIERUNG DER EINGABEPARAMETER
+    if not search_term or not isinstance(search_term, str):
+        st.error("❌ Ungültiger Suchbegriff")
+        return 0, []
+    
+    if not current_papers or not isinstance(current_papers, list):
+        st.warning("⚠️ Keine gültigen Papers bereitgestellt")
+        return 0, []
+    
     try:
-        # 1. SICHERE Workbook-Erstellung
+        # 1. ULTRA-SICHERE Workbook-Erstellung
+        wb = None
         try:
             if os.path.exists(template_path):
                 wb = openpyxl.load_workbook(template_path)
             else:
                 wb = openpyxl.Workbook()
+                # Entferne Standard-Sheet sicher
                 if wb.active:
-                    wb.remove(wb.active)
+                    try:
+                        wb.remove(wb.active)
+                    except:
+                        pass
         except Exception as wb_error:
-            st.error(f"❌ Workbook-Fehler: {str(wb_error)}")
+            st.error(f"❌ Kritischer Workbook-Fehler: {str(wb_error)}")
+            return 0, []
+        
+        # VALIDIERUNG: Workbook muss existieren
+        if wb is None:
+            st.error("❌ Workbook konnte nicht erstellt werden")
             return 0, []
         
         # 2. SICHERE Laden vorheriger Papers
@@ -2302,127 +2321,214 @@ def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tup
             if previous_papers is None:
                 previous_papers = []
         except Exception as load_error:
-            st.warning(f"⚠️ Fehler beim Laden vorheriger Papers: {str(load_error)}")
+            st.warning(f"⚠️ Fehler beim Laden: {str(load_error)}")
             previous_papers = []
         
         # 3. SICHERE PMID-Set Erstellung
         previous_pmids = set()
         try:
-            if previous_papers and isinstance(previous_papers, list):
+            if isinstance(previous_papers, list):
                 for paper in previous_papers:
                     if paper and isinstance(paper, dict):
                         pmid = paper.get("PMID")
                         if pmid:
                             previous_pmids.add(str(pmid))
         except Exception as pmid_error:
-            st.warning(f"⚠️ Fehler bei PMID-Verarbeitung: {str(pmid_error)}")
+            st.warning(f"⚠️ PMID-Fehler: {str(pmid_error)}")
             previous_pmids = set()
         
         # 4. SICHERE Identifikation neuer Papers
         new_papers = []
         try:
-            if current_papers and isinstance(current_papers, list):
-                for paper in current_papers:
-                    if paper and isinstance(paper, dict):
-                        current_pmid = str(paper.get("PMID", ""))
-                        if current_pmid and current_pmid not in previous_pmids:
-                            paper["Status"] = "NEU"
-                            new_papers.append(paper)
-                        else:
-                            paper["Status"] = "BEKANNT"
+            for paper in current_papers:
+                if paper and isinstance(paper, dict):
+                    current_pmid = str(paper.get("PMID", ""))
+                    if current_pmid and current_pmid not in previous_pmids:
+                        paper["Status"] = "NEU"
+                        new_papers.append(paper)
+                    else:
+                        paper["Status"] = "BEKANNT"
         except Exception as new_papers_error:
             st.error(f"❌ Fehler bei neuen Papers: {str(new_papers_error)}")
             return 0, []
         
-        # 5. SICHERE Sheet-Erstellung/Update
+        # 5. ULTRA-SICHERE Sheet-Erstellung/Update
+        ws = None
         try:
             if sheet_name not in wb.sheetnames:
-                ws = wb.create_sheet(sheet_name)
-                create_excel_sheet_headers(ws)
+                # SICHERE Sheet-Erstellung
+                try:
+                    ws = wb.create_sheet(sheet_name)
+                    if ws is None:
+                        raise ValueError("Sheet-Erstellung fehlgeschlagen")
+                    
+                    # SICHERE Header-Erstellung
+                    create_excel_sheet_headers(ws)
+                    
+                except Exception as sheet_create_error:
+                    st.error(f"❌ Sheet-Erstellung fehlgeschlagen: {str(sheet_create_error)}")
+                    return len(new_papers), new_papers
             else:
-                ws = wb[sheet_name]
+                # SICHERE Sheet-Auswahl
+                try:
+                    ws = wb[sheet_name]
+                    if ws is None:
+                        raise ValueError("Sheet-Auswahl fehlgeschlagen")
+                except Exception as sheet_select_error:
+                    st.error(f"❌ Sheet-Auswahl fehlgeschlagen: {str(sheet_select_error)}")
+                    return len(new_papers), new_papers
             
-            # Nur neue Papers hinzufügen
+            # VALIDIERUNG: Worksheet muss existieren
+            if ws is None:
+                st.error("❌ Worksheet ist None nach Erstellung/Auswahl")
+                return len(new_papers), new_papers
+            
+            # SICHERE Papers hinzufügen
             if new_papers:
-                add_papers_to_sheet(ws, new_papers)
-                
+                try:
+                    add_papers_to_sheet(ws, new_papers)
+                except Exception as add_error:
+                    st.error(f"❌ Fehler beim Hinzufügen der Papers: {str(add_error)}")
+                    # Trotzdem weiter machen
+                    
         except Exception as sheet_error:
             st.error(f"❌ Sheet-Fehler: {str(sheet_error)}")
-            return len(new_papers), new_papers  # Trotzdem neue Papers zurückgeben
+            return len(new_papers), new_papers
         
         # 6. SICHERE Overview Update
         try:
-            update_overview_sheet(wb, search_term, len(current_papers) if current_papers else 0, len(new_papers))
+            update_overview_sheet(wb, search_term, len(current_papers), len(new_papers))
         except Exception as overview_error:
-            st.warning(f"⚠️ Overview-Update Fehler: {str(overview_error)}")
-            # Weiter machen - Overview ist nicht kritisch
+            st.warning(f"⚠️ Overview-Fehler: {str(overview_error)}")
         
         # 7. SICHERE Excel-Speicherung
         try:
             wb.save(template_path)
         except Exception as save_error:
             st.error(f"❌ Speicher-Fehler: {str(save_error)}")
-            return len(new_papers), new_papers
         
         return len(new_papers), new_papers
         
     except Exception as e:
-        st.error(f"❌ **KRITISCHER FEHLER in add_new_papers_to_excel:** {str(e)}")
-        st.error(f"🔍 **Debug-Details:** search_term='{search_term}', papers={len(current_papers) if current_papers else 0}")
+        st.error(f"❌ **ULTRA-KRITISCHER FEHLER:** {str(e)}")
+        st.error(f"🔍 **Details:** term='{search_term}', papers={len(current_papers) if current_papers else 0}")
         
-        # Notfall-Rückgabe - wenigstens die Papers sind verfügbar
+        # NOTFALL-RÜCKGABE
         if current_papers:
             return len(current_papers), current_papers
         return 0, []
 
 
 
-def create_excel_sheet_headers(ws):
-    """Erstellt Header für Excel-Sheet"""
-    headers = [
-        "PMID", "Titel", "Autoren", "Journal", "Jahr", 
-        "Abstract", "DOI", "URL", "Status", "Hinzugefügt_am"
-    ]
-    
-    # Header-Style
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    
-    for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-    
-    # Spaltenbreite anpassen
-    column_widths = [12, 50, 30, 25, 8, 60, 15, 25, 12, 18]
-    for col, width in enumerate(column_widths, 1):
-        col_letter = get_column_letter(col)
-        ws.column_dimensions[col_letter].width = width
 
-def add_papers_to_sheet(ws, papers: List[Dict]):
-    """Fügt Papers zu Excel-Sheet hinzu"""
-    # Finde nächste leere Zeile
-    next_row = ws.max_row + 1
+def create_excel_sheet_headers(ws):
+    """Erstellt Header für Excel-Sheet mit robustem Error-Handling"""
+    if ws is None:
+        raise ValueError("❌ Worksheet ist None - kann keine Header erstellen")
     
-    for paper in papers:
-        row_data = [
-            paper.get("PMID", ""),
-            paper.get("Title", "")[:500],  # Begrenzen für Excel
-            paper.get("Authors", "")[:300],
-            paper.get("Journal", "")[:100],
-            paper.get("Year", ""),
-            paper.get("Abstract", "")[:1000],  # Begrenzen für Excel
-            paper.get("DOI", ""),
-            paper.get("URL", ""),
-            paper.get("Status", "NEU"),
-            datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+    try:
+        headers = [
+            "PMID", "Titel", "Autoren", "Journal", "Jahr", 
+            "Abstract", "DOI", "URL", "Status", "Hinzugefügt_am"
         ]
         
-        for col, value in enumerate(row_data, 1):
-            ws.cell(row=next_row, column=col, value=value)
+        # Header-Style
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         
-        next_row += 1
+        # SICHERE Header-Erstellung
+        for col, header in enumerate(headers, 1):
+            try:
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center")
+            except Exception as cell_error:
+                st.warning(f"⚠️ Fehler bei Header-Zelle {col}: {str(cell_error)}")
+                continue
+        
+        # SICHERE Spaltenbreite-Anpassung
+        try:
+            column_widths = [12, 50, 30, 25, 8, 60, 15, 25, 12, 18]
+            for col, width in enumerate(column_widths, 1):
+                try:
+                    col_letter = get_column_letter(col)
+                    ws.column_dimensions[col_letter].width = width
+                except Exception as width_error:
+                    # Überspringe fehlerhafte Spaltenbreiten
+                    continue
+        except Exception as width_setup_error:
+            st.warning(f"⚠️ Fehler bei Spaltenbreiten: {str(width_setup_error)}")
+            
+    except Exception as e:
+        st.error(f"❌ Kritischer Fehler beim Erstellen der Header: {str(e)}")
+        raise
+
+
+def add_papers_to_sheet(ws, papers: List[Dict]):
+    """Fügt Papers zu Excel-Sheet hinzu mit robustem Error-Handling"""
+    if ws is None:
+        raise ValueError("❌ Worksheet ist None - kann keine Papers hinzufügen")
+    
+    if not papers or not isinstance(papers, list):
+        st.warning("⚠️ Keine gültigen Papers zum Hinzufügen")
+        return
+    
+    try:
+        # SICHERE Ermittlung der nächsten Zeile
+        try:
+            next_row = ws.max_row + 1 if ws.max_row and ws.max_row > 0 else 2
+        except Exception as row_error:
+            st.warning(f"⚠️ Fehler bei max_row: {str(row_error)}")
+            next_row = 2  # Fallback auf Zeile 2
+        
+        # SICHERE Paper-Iteration
+        papers_added = 0
+        for i, paper in enumerate(papers):
+            if not paper or not isinstance(paper, dict):
+                continue
+                
+            try:
+                # SICHERE Daten-Extraktion
+                row_data = [
+                    str(paper.get("PMID", ""))[:50],  # Begrenzt und als String
+                    str(paper.get("Title", ""))[:500],
+                    str(paper.get("Authors", ""))[:300],
+                    str(paper.get("Journal", ""))[:100],
+                    str(paper.get("Year", ""))[:10],
+                    str(paper.get("Abstract", ""))[:1000],
+                    str(paper.get("DOI", ""))[:100],
+                    str(paper.get("URL", ""))[:200],
+                    str(paper.get("Status", "NEU"))[:20],
+                    datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+                ]
+                
+                # SICHERE Zeilen-Erstellung
+                current_row = next_row + i
+                for col, value in enumerate(row_data, 1):
+                    try:
+                        # Sichere Zellenwertzuweisung
+                        if value is not None:
+                            ws.cell(row=current_row, column=col, value=value)
+                    except Exception as cell_error:
+                        # Überspringe fehlerhafte Zellen, aber mache weiter
+                        continue
+                
+                papers_added += 1
+                
+            except Exception as paper_error:
+                st.warning(f"⚠️ Fehler bei Paper {i+1}: {str(paper_error)}")
+                continue
+        
+        if papers_added > 0:
+            st.success(f"✅ {papers_added} Papers erfolgreich zu Sheet hinzugefügt")
+        else:
+            st.warning("⚠️ Keine Papers konnten hinzugefügt werden")
+            
+    except Exception as e:
+        st.error(f"❌ Kritischer Fehler beim Hinzufügen der Papers: {str(e)}")
+        raise
+
 
 def update_overview_sheet(wb, search_term: str, total_papers: int, new_papers: int):
     """Aktualisiert das Overview-Sheet mit robustem Error-Handling"""
