@@ -20,6 +20,7 @@ import ssl
 from typing import List, Dict, Any, Tuple
 import json
 from pathlib import Path
+from typing import List, Dict, Any, Tuple
 import threading
 
 # =============== STREAMLIT SECRETS INTEGRATION ===============
@@ -2023,6 +2024,149 @@ def load_master_workbook():
     except Exception as e:
         st.error(f"❌ Excel-Datei konnte nicht geladen werden: {str(e)}")
         return None
+def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tuple[int, List[Dict]]:
+    """Fügt neue Papers zur Excel-Datei hinzu und gibt Anzahl + neue Papers zurück"""
+    template_path = st.session_state["excel_template"]["file_path"]
+    sheet_name = generate_sheet_name(search_term)
+    
+    try:
+        # Lade oder erstelle Workbook
+        if os.path.exists(template_path):
+            wb = openpyxl.load_workbook(template_path)
+        else:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)  # Entferne das Standard-Sheet
+        
+        # Lade vorherige Papers aus Excel
+        previous_papers = load_previous_search_results(search_term)
+        previous_pmids = set(paper.get("PMID", "") for paper in previous_papers if paper.get("PMID"))
+        
+        # Identifiziere neue Papers
+        new_papers = []
+        for paper in current_papers:
+            current_pmid = paper.get("PMID", "")
+            if current_pmid and current_pmid not in previous_pmids:
+                paper["Status"] = "NEU"
+                new_papers.append(paper)
+            else:
+                paper["Status"] = "BEKANNT"
+        
+        # Erstelle oder aktualisiere Sheet
+        if sheet_name not in wb.sheetnames:
+            ws = wb.create_sheet(sheet_name)
+            create_excel_sheet_headers(ws)
+        else:
+            ws = wb[sheet_name]
+        
+        # Füge nur neue Papers hinzu
+        if new_papers:
+            add_papers_to_sheet(ws, new_papers)
+        
+        # Update Overview Sheet
+        update_overview_sheet(wb, search_term, len(current_papers), len(new_papers))
+        
+        # Speichere Excel-Datei
+        wb.save(template_path)
+        
+        return len(new_papers), new_papers
+        
+    except Exception as e:
+        st.error(f"❌ Fehler beim Hinzufügen zu Excel: {str(e)}")
+        return 0, []
+
+def create_excel_sheet_headers(ws):
+    """Erstellt Header für Excel-Sheet"""
+    headers = [
+        "PMID", "Titel", "Autoren", "Journal", "Jahr", 
+        "Abstract", "DOI", "URL", "Status", "Hinzugefügt_am"
+    ]
+    
+    # Header-Style
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    
+    # Spaltenbreite anpassen
+    column_widths = [12, 50, 30, 25, 8, 60, 15, 25, 12, 18]
+    for col, width in enumerate(column_widths, 1):
+        col_letter = get_column_letter(col)
+        ws.column_dimensions[col_letter].width = width
+
+def add_papers_to_sheet(ws, papers: List[Dict]):
+    """Fügt Papers zu Excel-Sheet hinzu"""
+    # Finde nächste leere Zeile
+    next_row = ws.max_row + 1
+    
+    for paper in papers:
+        row_data = [
+            paper.get("PMID", ""),
+            paper.get("Title", "")[:500],  # Begrenzen für Excel
+            paper.get("Authors", "")[:300],
+            paper.get("Journal", "")[:100],
+            paper.get("Year", ""),
+            paper.get("Abstract", "")[:1000],  # Begrenzen für Excel
+            paper.get("DOI", ""),
+            paper.get("URL", ""),
+            paper.get("Status", "NEU"),
+            datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+        ]
+        
+        for col, value in enumerate(row_data, 1):
+            ws.cell(row=next_row, column=col, value=value)
+        
+        next_row += 1
+
+def update_overview_sheet(wb, search_term: str, total_papers: int, new_papers: int):
+    """Aktualisiert das Overview-Sheet"""
+    if "📊_Overview" not in wb.sheetnames:
+        overview_sheet = wb.create_sheet("📊_Overview", 0)
+        
+        # Header erstellen
+        headers = [
+            "Sheet_Name", "Suchbegriff", "Anzahl_Papers", "Letztes_Update", 
+            "Neue_Papers_Letzter_Run", "Status", "Erstellt_am"
+        ]
+        
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        
+        for col, header in enumerate(headers, 1):
+            cell = overview_sheet.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+    else:
+        overview_sheet = wb["📊_Overview"]
+    
+    # Suche bestehenden Eintrag oder erstelle neuen
+    sheet_name = generate_sheet_name(search_term)
+    row_found = None
+    
+    for row in overview_sheet.iter_rows(min_row=2):
+        if row[1].value == search_term:
+            row_found = row[0].row
+            break
+    
+    if row_found:
+        # Update bestehenden Eintrag
+        overview_sheet.cell(row=row_found, column=3, value=total_papers)
+        overview_sheet.cell(row=row_found, column=4, value=datetime.datetime.now().isoformat())
+        overview_sheet.cell(row=row_found, column=5, value=new_papers)
+        overview_sheet.cell(row=row_found, column=6, value="Aktualisiert")
+    else:
+        # Neuen Eintrag erstellen
+        next_row = overview_sheet.max_row + 1
+        overview_sheet.cell(row=next_row, column=1, value=sheet_name)
+        overview_sheet.cell(row=next_row, column=2, value=search_term)
+        overview_sheet.cell(row=next_row, column=3, value=total_papers)
+        overview_sheet.cell(row=next_row, column=4, value=datetime.datetime.now().isoformat())
+        overview_sheet.cell(row=next_row, column=5, value=new_papers)
+        overview_sheet.cell(row=next_row, column=6, value="Neu")
+        overview_sheet.cell(row=next_row, column=7, value=datetime.datetime.now().isoformat())
 
 def show_excel_sheets_overview():
     """Zeigt Übersicht aller Excel-Sheets"""
