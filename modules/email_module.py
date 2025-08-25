@@ -1763,7 +1763,7 @@ def show_excel_template_management():
         file_size = os.path.getsize(template_path)
         file_date = datetime.datetime.fromtimestamp(os.path.getmtime(template_path))
         
-          st.success(f"✅ **Master Excel-Template aktiv:** {template_path}")
+        st.success(f"✅ **Master Excel-Template aktiv:** {template_path}")
         st.info(f"📊 **Größe:** {file_size:,} bytes | **Letzte Änderung:** {file_date.strftime('%d.%m.%Y %H:%M')}")
         
         # Excel-Statistiken anzeigen
