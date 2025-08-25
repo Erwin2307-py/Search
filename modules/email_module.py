@@ -2037,19 +2037,31 @@ def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tup
             wb = openpyxl.Workbook()
             wb.remove(wb.active)  # Entferne das Standard-Sheet
         
-        # Lade vorherige Papers aus Excel
+        # Lade vorherige Papers aus Excel - FEHLERBEHANDLUNG HINZUGEFÜGT
         previous_papers = load_previous_search_results(search_term)
-        previous_pmids = set(paper.get("PMID", "") for paper in previous_papers if paper.get("PMID"))
         
-        # Identifiziere neue Papers
+        # WICHTIG: Überprüfe ob previous_papers None ist
+        if previous_papers is None:
+            previous_papers = []
+        
+        # Sichere Erstellung der PMID-Set
+        previous_pmids = set()
+        if previous_papers:
+            for paper in previous_papers:
+                if paper and isinstance(paper, dict) and paper.get("PMID"):
+                    previous_pmids.add(paper.get("PMID"))
+        
+        # Identifiziere neue Papers - SICHERE ITERATION
         new_papers = []
-        for paper in current_papers:
-            current_pmid = paper.get("PMID", "")
-            if current_pmid and current_pmid not in previous_pmids:
-                paper["Status"] = "NEU"
-                new_papers.append(paper)
-            else:
-                paper["Status"] = "BEKANNT"
+        if current_papers:  # Überprüfe auch current_papers
+            for paper in current_papers:
+                if paper and isinstance(paper, dict):  # Sicherheitsprüfung
+                    current_pmid = paper.get("PMID", "")
+                    if current_pmid and current_pmid not in previous_pmids:
+                        paper["Status"] = "NEU"
+                        new_papers.append(paper)
+                    else:
+                        paper["Status"] = "BEKANNT"
         
         # Erstelle oder aktualisiere Sheet
         if sheet_name not in wb.sheetnames:
@@ -2063,7 +2075,7 @@ def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tup
             add_papers_to_sheet(ws, new_papers)
         
         # Update Overview Sheet
-        update_overview_sheet(wb, search_term, len(current_papers), len(new_papers))
+        update_overview_sheet(wb, search_term, len(current_papers) if current_papers else 0, len(new_papers))
         
         # Speichere Excel-Datei
         wb.save(template_path)
@@ -2072,7 +2084,9 @@ def add_new_papers_to_excel(search_term: str, current_papers: List[Dict]) -> Tup
         
     except Exception as e:
         st.error(f"❌ Fehler beim Hinzufügen zu Excel: {str(e)}")
+        st.error(f"🔍 Debug-Info: search_term='{search_term}', current_papers_count={len(current_papers) if current_papers else 0}")
         return 0, []
+
 
 def create_excel_sheet_headers(ws):
     """Erstellt Header für Excel-Sheet"""
@@ -2764,22 +2778,32 @@ def load_previous_search_results(query: str) -> List[Dict]:
         
         df = pd.read_excel(template_path, sheet_name=sheet_name)
         
+        # SICHERE BEHANDLUNG LEERER DATAFRAMES
+        if df.empty:
+            return []
+        
         previous_papers = []
         for _, row in df.iterrows():
-            if pd.notna(row.get("PMID")):
-                paper = {
-                    "PMID": str(row.get("PMID", "")),
-                    "Title": str(row.get("Titel", "")),
-                    "Authors": str(row.get("Autoren", "")),
-                    "Journal": str(row.get("Journal", "")),
-                    "Year": str(row.get("Jahr", ""))
-                }
-                previous_papers.append(paper)
+            try:
+                if pd.notna(row.get("PMID")):
+                    paper = {
+                        "PMID": str(row.get("PMID", "")),
+                        "Title": str(row.get("Titel", "")),
+                        "Authors": str(row.get("Autoren", "")),
+                        "Journal": str(row.get("Journal", "")),
+                        "Year": str(row.get("Jahr", ""))
+                    }
+                    previous_papers.append(paper)
+            except Exception as row_error:
+                # Überspringe fehlerhafte Zeilen
+                continue
         
         return previous_papers
         
-    except Exception:
+    except Exception as e:
+        # Bei jedem Fehler eine leere Liste zurückgeben statt None
         return []
+
 
 def identify_new_papers(current_papers: List[Dict], previous_papers: List[Dict]) -> List[Dict]:
     """Identifiziert neue Papers"""
